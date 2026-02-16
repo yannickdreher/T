@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:T.ViewModels"
+			 xmlns:models="using:T.Models"
+			 xmlns:converters="using:T.Converters"
+			 xmlns:ui="using:FluentAvalonia.UI.Controls"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+			 x:Class="T.Views.Components.SessionsPanel"
+			 x:DataType="vm:MainWindowViewModel">
+
+	<Design.DataContext>
+		<vm:MainWindowViewModel/>
+	</Design.DataContext>
+
+	<UserControl.Resources>
+		<converters:ConnectionStatusToBrushConverter x:Key="StatusToBrush"/>
+	</UserControl.Resources>
+
+	<UserControl.Styles>
+		<Style Selector="TreeViewItem.drag-over">
+			<Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+			<Setter Property="Opacity" Value="0.3"/>
+		</Style>
+		<Style Selector="TreeViewItem.drag-source">
+			<Setter Property="Opacity" Value="0.4"/>
+		</Style>
+	</UserControl.Styles>
+
+	<Border Classes="Panel" Padding="8">
+		<Grid RowDefinitions="Auto,*" RowSpacing="4">
+			<StackPanel Grid.Row="0" Spacing="4">
+				<Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="4">
+					<Button Grid.Column="0"
+							Command="{Binding ExpandAllFoldersCommand}"
+							Width="32"
+							ToolTip.Tip="Expand all">
+						<ui:SymbolIcon Symbol="ChevronDown"/>
+					</Button>
+					<Button Grid.Column="1"
+							Command="{Binding CollapseAllFoldersCommand}"
+							Width="32"
+							ToolTip.Tip="Collapse all">
+						<ui:SymbolIcon Symbol="ChevronUp"/>
+					</Button>
+					<Button Grid.Column="2"
+							Command="{Binding NewFolderCommand}"
+							Width="38"
+							ToolTip.Tip="New Folder">
+						<ui:SymbolIcon Symbol="NewFolder"/>
+					</Button>
+					<Button Grid.Column="3"
+							Command="{Binding NewSessionCommand}"
+							HorizontalAlignment="Stretch"
+							ToolTip.Tip="New Session">
+						<ui:SymbolIcon Symbol="Add"/>
+					</Button>
+					<Button Grid.Column="4"
+							Command="{Binding EditSessionCommand}"
+							Width="38"
+							ToolTip.Tip="Edit">
+						<ui:SymbolIcon Symbol="Edit"/>
+					</Button>
+					<Button Grid.Column="5"
+							Command="{Binding DeleteSelectedCommand}"
+							Width="38"
+							ToolTip.Tip="Delete">
+						<ui:SymbolIcon Symbol="Delete"/>
+					</Button>
+				</Grid>
+			</StackPanel>
+
+			<TreeView Grid.Row="1"
+					  x:Name="SessionTreeView"
+					  ItemsSource="{Binding TreeNodes}"
+					  SelectedItem="{Binding SelectedTreeNode}"
+					  DoubleTapped="OnSessionDoubleTapped"
+					  PointerPressed="OnEmptyAreaPressed"
+					  ContainerPrepared="OnTreeViewContainerPrepared"
+					  ContainerClearing="OnTreeViewContainerClearing"
+					  HorizontalAlignment="Stretch">
+
+				<TreeView.ItemTemplate>
+					<TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:TreeNode">
+						<Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+							  DragDrop.AllowDrop="True">
+							<!-- Folder Icon -->
+							<ui:SymbolIcon Grid.Column="0" Symbol="Folder"
+										   IsVisible="{Binding IsFolder}"
+										   VerticalAlignment="Center"/>
+
+							<!-- Status Indicator für Sessions mit Converter -->
+							<Ellipse Grid.Column="0"
+								     Width="8"
+								     Height="8"
+								     VerticalAlignment="Center"
+								     Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"
+								     IsVisible="{Binding !IsFolder}"/>
+
+							<TextBlock Grid.Column="1"
+									   Text="{Binding Name}"
+									   TextTrimming="CharacterEllipsis"
+									   MaxWidth="180"
+									   TextAlignment="Left"
+									   HorizontalAlignment="Left"/>
+						</Grid>
+					</TreeDataTemplate>
+				</TreeView.ItemTemplate>
+			</TreeView>
+		</Grid>
+	</Border>
+</UserControl>

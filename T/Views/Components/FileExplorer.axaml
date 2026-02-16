@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:T.ViewModels"
+			 xmlns:ui="using:FluentAvalonia.UI.Controls"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+			 x:Class="T.Views.Components.FileExplorer"
+			 x:DataType="vm:SessionViewModel"
+			 Margin="4">
+
+	<Design.DataContext>
+		<vm:SessionViewModel/>
+	</Design.DataContext>
+
+	<Grid RowDefinitions="Auto,Auto,*" RowSpacing="5" ColumnSpacing="5">
+		<TextBox Text="{Binding CurrentPath}" IsReadOnly="True"/>
+
+		<Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="5" HorizontalAlignment="Stretch">
+			<Button Grid.Column="0" Command="{Binding RefreshDirectoryCommand}" ToolTip.Tip="Refresh"
+					VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsEnabled="{Binding IsConnected}">
+				<ui:SymbolIcon Symbol="Refresh"/>
+			</Button>
+			<Button Grid.Column="1" Command="{Binding DownloadFileCommand}" ToolTip.Tip="Download"
+					VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsEnabled="{Binding IsConnected}">
+				<ui:SymbolIcon Symbol="Download"/>
+			</Button>
+			<Button Grid.Column="2" Click="OnUploadClick" ToolTip.Tip="Upload"
+					VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsEnabled="{Binding IsConnected}">
+				<ui:SymbolIcon Symbol="Upload"/>
+			</Button>
+			<Button Grid.Column="3" Command="{Binding DeleteFileCommand}" ToolTip.Tip="Delete"
+					VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsEnabled="{Binding IsConnected}">
+				<ui:SymbolIcon Symbol="Delete"/>
+			</Button>
+			<Button Grid.Column="4" Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ShowPermissionDialogCommand}"
+					ToolTip.Tip="Permissions" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+				<ui:SymbolIcon Symbol="Permissions"/>
+			</Button>
+		</Grid>
+
+		<DataGrid Grid.Row="2"
+				  ItemsSource="{Binding RemoteFiles}"
+				  SelectedItem="{Binding SelectedFile}"
+				  AutoGenerateColumns="False"
+				  CanUserReorderColumns="False"
+				  CanUserResizeColumns="True"
+				  IsReadOnly="True"
+				  GridLinesVisibility="None"
+				  HeadersVisibility="All"
+				  DoubleTapped="OnFileDoubleTapped">
+			<DataGrid.Columns>
+				<!-- Icon als SymbolIcon statt Text -->
+				<DataGridTemplateColumn Header="" Width="40">
+					<DataGridTemplateColumn.CellTemplate>
+						<DataTemplate>
+							<ui:SymbolIcon Symbol="{Binding IconSymbol}"
+										   Width="16"
+										   Height="16"
+										   HorizontalAlignment="Center"/>
+						</DataTemplate>
+					</DataGridTemplateColumn.CellTemplate>
+				</DataGridTemplateColumn>
+
+				<DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+				<DataGridTextColumn Header="Size" Binding="{Binding SizeDisplay}" Width="70"/>
+				<DataGridTextColumn Header="Perms" Binding="{Binding Permissions}" Width="50"/>
+			</DataGrid.Columns>
+		</DataGrid>
+	</Grid>
+</UserControl>

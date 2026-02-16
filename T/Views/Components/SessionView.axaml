@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:T.ViewModels"
+             xmlns:components="using:T.Views.Components"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="T.Views.Components.SessionView"
+             x:DataType="vm:SessionViewModel">
+
+	<Grid RowDefinitions="*,Auto">
+		<!-- Session Content -->
+		<Grid Grid.Row="0" ColumnDefinitions="300,Auto,*">
+			<components:FileExplorer Grid.Column="0"/>
+			<GridSplitter Grid.Column="1" ResizeDirection="Columns"/>
+			<components:TerminalPanel Grid.Column="2"/>
+		</Grid>
+
+		<!-- Status Bar -->
+		<Border Grid.Row="1"
+				Padding="4"
+				Background="{DynamicResource AccentFillColorTertiaryBrush}"
+				CornerRadius="0,4">
+			<Grid ColumnDefinitions="*,Auto">
+				<TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}"
+						   Foreground="White" VerticalAlignment="Center"/>
+
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+							IsVisible="{Binding IsTransferring, FallbackValue=False}"
+							VerticalAlignment="Center">
+					<TextBlock Text="{Binding TransferDirection}" Foreground="White"/>
+					<TextBlock Text="{Binding TransferFileName}"
+							   Foreground="White" MaxWidth="150"
+							   TextTrimming="CharacterEllipsis"/>
+					<ProgressBar Value="{Binding TransferProgress}"
+								 Maximum="100" Width="150"
+								 VerticalAlignment="Center"/>
+					<TextBlock Text="{Binding TransferProgress, StringFormat={}{0:F0}%}"
+							   Foreground="White" Width="35"/>
+					<TextBlock Text="{Binding TransferSpeed}"
+							   Foreground="White" Opacity="0.8" Width="80"/>
+					<TextBlock Text="{Binding TransferEta, StringFormat=ETA {0}}"
+							   Foreground="White" Opacity="0.8"/>
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<!-- Connection Overlay -->
+		<Border IsVisible="{Binding ShowOverlay}"
+				Background="#DD000000"
+				IsHitTestVisible="True">
+			<StackPanel HorizontalAlignment="Center"
+						VerticalAlignment="Center"
+						Spacing="20">
+				<ProgressBar IsIndeterminate="True" Width="240"/>
+				<TextBlock Text="{Binding OverlayMessage}"
+						   Foreground="White"
+						   TextAlignment="Center"
+						   HorizontalAlignment="Center"/>
+				<Button Content="Cancel"
+						Command="{Binding CancelReconnectCommand}"
+						HorizontalAlignment="Center"
+						Classes="accent"
+						Padding="24,8"/>
+			</StackPanel>
+		</Border>
+	</Grid>
+</UserControl>

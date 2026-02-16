@@ -1,0 +1,79 @@
+<Application xmlns="https://github.com/avaloniaui"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:sty="using:FluentAvalonia.Styling"
+			 xmlns:ui="using:FluentAvalonia.UI.Controls"
+			 xmlns:conv="using:T.Converters"
+			 x:Class="T.App">
+
+	<Application.Resources>
+		<conv:BoolToBrushConverter x:Key="ConnectionStatusConverter"
+								   TrueBrush="LimeGreen"
+								   FalseBrush="Gray"/>
+		<conv:IndexEqualsConverter x:Key="EqualsConverter"/>
+
+		<!-- Override the default font resource -->
+		<FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
+	</Application.Resources>
+
+	<Application.Styles>
+		<FluentTheme />
+		<sty:FluentAvaloniaTheme PreferSystemTheme="True"
+								 PreferUserAccentColor="True"/>
+
+		<!-- DataGrid theme -->
+		<StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Simple.xaml"/>
+
+		<!-- Global GridSplitter styling -->
+		<Style Selector="GridSplitter[ResizeDirection=Columns]">
+			<Setter Property="Width" Value="4"/>
+			<Setter Property="Margin" Value="0"/>
+			<Setter Property="Padding" Value="0"/>
+		</Style>
+
+		<!-- Card styling -->
+		<Style Selector="Border.Panel">
+			<Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+			<Setter Property="BorderThickness" Value="1"/>
+			<Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}"/>
+		</Style>
+
+		<!-- ContentDialog style overrides -->
+		<Style Selector="ui|ContentDialog">
+			<Setter Property="CornerRadius" Value="{DynamicResource OverlayCornerRadius}"/>
+			<Setter Property="Padding" Value="8"/>
+			<Setter Property="MinWidth" Value="720"/>
+		</Style>
+
+		<!--<Style Selector="ui|ContentDialog.settings-dialog">
+			<Setter Property="MinWidth" Value="720"/>
+			<Setter Property="Width" Value="720"/>
+			<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+		</Style>
+
+		<Style Selector="ui|ContentDialog.settings-dialog > ContentPresenter#Content">
+			<Setter Property="HorizontalAlignment" Value="Stretch"/>
+		</Style>-->
+
+		<!-- DataGrid styling -->
+		<Style Selector="DataGrid">
+			<Setter Property="CornerRadius" Value="4"/>
+			<Setter Property="Background" Value="{DynamicResource LayerFillColorDefaultBrush}"/>
+			<Setter Property="RowBackground" Value="Transparent"/>
+		</Style>
+
+		<Style Selector="DataGridColumnHeader">
+			<!--<Setter Property="CornerRadius" Value="4"/>-->
+			<!--<Setter Property="Background" Value="{DynamicResource LayerFillColorDefaultBrush}"/>-->
+			<Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+			<Setter Property="FontWeight" Value="SemiBold"/>
+		</Style>
+
+		<Style Selector="DataGridRow:pointerover">
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+		</Style>
+
+		<Style Selector="DataGridRow:selected">
+			<Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+		</Style>
+	</Application.Styles>
+</Application>

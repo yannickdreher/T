@@ -1,0 +1,79 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:models="using:T.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="T.Views.Dialogs.SessionEditorDialog"
+             x:DataType="models:SshSession">
+
+    <StackPanel Spacing="8" MinWidth="400">
+        <!-- Basic Info -->
+        <TextBox Text="{Binding Name}" 
+                 Watermark="Name" />
+        
+        <TextBox Text="{Binding Host}" 
+                 Watermark="Host" />
+        
+        <ui:NumberBox Value="{Binding Port}" 
+                      Minimum="1" 
+                      Maximum="65535"
+                      SpinButtonPlacementMode="Inline" 
+                      Header="Port"/>
+        
+        <TextBox Text="{Binding Username}" 
+                 Watermark="Username" />
+        
+        <!-- Password Authentication -->
+        <TextBox Text="{Binding Password}" 
+                 Watermark="Password (optional if using key)"
+                 PasswordChar="●" 
+                 RevealPassword="False"/>
+        
+        <!-- OR Separator -->
+        <Grid ColumnDefinitions="*,Auto,*" Margin="0,8">
+            <Border Grid.Column="0" 
+                    Height="1" 
+                    Background="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" 
+                       Text="OR" 
+                       Margin="12,0"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Opacity="0.6"
+                       VerticalAlignment="Center"/>
+            <Border Grid.Column="2" 
+                    Height="1" 
+                    Background="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    VerticalAlignment="Center"/>
+        </Grid>
+        
+        <!-- Private Key Authentication -->
+        <StackPanel Spacing="4">
+            <TextBlock Text="Private Key (optional)"
+                       Opacity="0.7"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBox Grid.Column="0"
+                         Text="{Binding PrivateKeyPath}" 
+                         Watermark="Path to private key file"
+                         Margin="0,0,4,0"/>
+                <Button Grid.Column="1"
+                        Content="Browse..."
+                        Click="OnBrowsePrivateKey"/>
+            </Grid>
+        </StackPanel>
+        
+        <TextBox Text="{Binding PrivateKeyPassword}" 
+                 Watermark="Private Key Password (if encrypted)"
+                 PasswordChar="●" 
+                 RevealPassword="False"/>
+        
+        <!-- Description -->
+        <TextBox Text="{Binding Description}" 
+                 Watermark="Description"
+                 AcceptsReturn="True" 
+                 MinHeight="60"/>
+    </StackPanel>
+</UserControl>

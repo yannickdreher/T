@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:models="using:T.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="T.Views.Dialogs.FolderEditorDialog"
+             x:DataType="models:Folder">
+
+    <StackPanel Spacing="12" MinWidth="350">
+        <TextBox Text="{Binding Name}" Watermark="Folder Name" />
+    </StackPanel>
+</UserControl>

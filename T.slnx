@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="T/T.csproj" />
+  <Project Path="VT/VT.csproj" />
+</Solution>
