@@ -386,6 +386,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         try
         {
             await _sshService.ChangePermissionsAsync(SelectedFile.FullPath, permissions);
+            await RefreshDirectoryAsync();
             StatusMessage = $"Permissions changed: {fileName}";
         }
         catch (Exception ex) { StatusMessage = $"Change permissions failed: {ex.Message}"; }
