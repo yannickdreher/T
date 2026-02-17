@@ -24,6 +24,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
@@ -82,25 +90,23 @@ jobs:
           /t:Publish `
           /p:PublishProfile=win-x64-co `
           /p:Configuration=Release `
-          /p:RuntimeIdentifier=win-x64
+          /p:RuntimeIdentifier=win-x64 `
+          /p:PublishUrl="bin\Publish\" `
+          /p:IsWebBootstrapper=true `
+          /p:Install=true `
+          /p:CreateWebPageOnPublish=true
     
     - name: Verify publish directory
       shell: pwsh
       run: |
-        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
+        $publishDir = "."
         echo "Checking publish directory: $publishDir"
-        if (Test-Path $publishDir) {
-          echo "Contents of publish directory:"
-          Get-ChildItem -Path $publishDir -Recurse -File | Where-Object { $_.Name -eq "index.html" -or $_.Extension -eq ".application" } | Select-Object FullName
-        } else {
-          echo "ERROR: Publish directory not found!"
-          exit 1
-        }
+        Get-ChildItem -Path $publishDir -Recurse -File | Select-Object FullName
     
     - name: Prepare GitHub Pages content
       shell: pwsh
       run: |
-        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
+        $publishDir = "T/bin/Publish"
         $tag = "${{ steps.version.outputs.TAG }}"
         $pagesDir = "pages-content"
         $targetDir = "$pagesDir/$tag"
@@ -129,7 +135,7 @@ jobs:
     - name: Create archive
       shell: pwsh
       run: |
-        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
+        $publishDir = "T/bin/Publish"
         Compress-Archive -Path "$publishDir/*" -DestinationPath "windows-x64-clickonce.zip"
     
     - name: Upload archive
