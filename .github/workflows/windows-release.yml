@@ -52,7 +52,7 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Adding MSBuild 18 to PATH..."
-        $msbuildPath = "C:\Program Files\Microsoft Visual Studio\18\MSBuild\Current\Bin"
+        $msbuildPath = "C:\Program Files (x86)\Microsoft Visual Studio\18\MSBuild\Current\Bin"
         
         if (Test-Path "$msbuildPath\MSBuild.exe")
         {
