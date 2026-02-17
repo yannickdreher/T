@@ -51,81 +51,18 @@ jobs:
     - name: Setup MSBuild 18
       shell: pwsh
       run: |
-        Write-Host "Searching for MSBuild installations..."
+        Write-Host "Adding MSBuild 18 to PATH..."
+        $msbuildPath = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin"
         
-        $possiblePaths = @(
-        "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin",
-          "C:\Program Files (x86)\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin",
-          "C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin",
-          "C:\Program Files (x86)\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin",
-          "C:\Program Files\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin",
-          "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin",
-          "C:\Program Files\Microsoft Visual Studio\2026\BuildTools\MSBuild\Current\Bin",
-          "C:\Program Files (x86)\Microsoft Visual Studio\2026\BuildTools\MSBuild\Current\Bin",
-          "C:\Program Files\Microsoft Visual Studio\2026\Enterprise\MSBuild\Current\Bin",
-          "C:\Program Files (x86)\Microsoft Visual Studio\2026\Enterprise\MSBuild\Current\Bin"
-        )
-        
-        Write-Host "`n=== Checking predefined paths ==="
-        foreach ($path in $possiblePaths) {
-          if (Test-Path "$path\MSBuild.exe") {
-            Write-Host "✓ FOUND: $path"
-          } else {
-            Write-Host "✗ Not found: $path"
-          }
-        }
-        
-        Write-Host "`n=== Searching all Visual Studio installations ==="
-        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        if (Test-Path $vsWhere) {
-          $installations = & $vsWhere -all -prerelease -format json | ConvertFrom-Json
-          foreach ($install in $installations) {
-            Write-Host "Found VS Installation:"
-            Write-Host "  Display Name: $($install.displayName)"
-            Write-Host "  Version: $($install.installationVersion)"
-            Write-Host "  Path: $($install.installationPath)"
-            
-            $msbuildPath = Join-Path $install.installationPath "MSBuild\Current\Bin"
-            if (Test-Path "$msbuildPath\MSBuild.exe") {
-              Write-Host "  ✓ MSBuild found at: $msbuildPath"
-            }
-          }
-        } else {
-          Write-Host "vswhere.exe not found"
-        }
-        
-        Write-Host "`n=== Recursive search for MSBuild.exe ==="
-        $drives = @("C:\Program Files", "C:\Program Files (x86)")
-        foreach ($drive in $drives) {
-          if (Test-Path $drive) {
-            Get-ChildItem -Path $drive -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | 
-              Select-Object -First 10 | 
-              ForEach-Object { Write-Host "Found: $($_.FullName)" }
-          }
-        }
-        
-        Write-Host "`n=== Attempting to add MSBuild to PATH ==="
-        $msbuildPath = $null
-        foreach ($path in $possiblePaths) {
-          if (Test-Path "$path\MSBuild.exe") {
-            $msbuildPath = $path
-            break
-          }
-        }
-        
-        if ($null -eq $msbuildPath -and (Test-Path $vsWhere)) {
-          $installation = & $vsWhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          if ($installation) {
-            $msbuildPath = Split-Path -Parent $installation
-          }
-        }
-        
-        if ($null -ne $msbuildPath -and (Test-Path "$msbuildPath\MSBuild.exe")) {
+        if (Test-Path "$msbuildPath\MSBuild.exe")
+        {
           echo "$msbuildPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "`n✓ MSBuild 18 added to PATH: $msbuildPath"
+          Write-Host "✓ MSBuild 18 added to PATH: $msbuildPath"
           & "$msbuildPath\MSBuild.exe" -version
-        } else {
-          Write-Host "`n✗ ERROR: MSBuild not found!"
+        }
+        else
+        {
+          Write-Host "✗ ERROR: MSBuild not found at: $msbuildPath"
           exit 1
         }
     
