@@ -16,10 +16,6 @@ concurrency:
 jobs:
   publish:
     runs-on: windows-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
