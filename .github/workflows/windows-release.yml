@@ -1,0 +1,109 @@
+name: Windows Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    
+    - name: Extract version from tag
+      id: version
+      shell: pwsh
+      run: |
+        $tag = "${{ github.event.release.tag_name }}"
+        $version = $tag -replace '^v', ''
+        $versionParts = $version.Split('.')
+        if ($versionParts.Length -eq 3) {
+          $version = "$version.0"
+        }
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+    
+    - name: Update pubxml with version and GitHub Pages URL
+      shell: pwsh
+      run: |
+        $pubxmlPath = "T/Properties/PublishProfiles/win-x64-co.pubxml"
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $tag = "${{ steps.version.outputs.TAG }}"
+        
+        $installUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/$tag/"
+        $updateUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest/"
+        
+        [xml]$pubxml = Get-Content $pubxmlPath
+        $pubxml.Project.PropertyGroup.ApplicationVersion = $version
+        $pubxml.Project.PropertyGroup.InstallUrl = $installUrl
+        $pubxml.Project.PropertyGroup.UpdateUrl = $updateUrl
+        
+        $pubxml.Save($pubxmlPath)
+        echo "Updated ApplicationVersion to: $version"
+        echo "Updated InstallUrl to: $installUrl"
+        echo "Updated UpdateUrl to: $updateUrl"
+    
+    - name: Restore dependencies
+      run: dotnet restore T/T.csproj
+    
+    - name: Publish ClickOnce
+      run: dotnet publish T/T.csproj /p:PublishProfile=win-x64-co /p:Configuration=Release
+    
+    - name: Checkout gh-pages branch
+      uses: actions/checkout@v4
+      with:
+        ref: gh-pages
+        path: gh-pages
+    
+    - name: Deploy to GitHub Pages
+      shell: pwsh
+      run: |
+        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
+        $tag = "${{ steps.version.outputs.TAG }}"
+        $ghPagesDir = "gh-pages"
+        $targetDir = "$ghPagesDir/$tag"
+        $latestDir = "$ghPagesDir/latest"
+        
+        New-Item -ItemType Directory -Path $targetDir -Force
+        New-Item -ItemType Directory -Path $latestDir -Force
+        
+        Copy-Item -Path "$publishDir/*" -Destination $targetDir -Recurse -Force
+        Copy-Item -Path "$publishDir/*" -Destination $latestDir -Recurse -Force
+        
+        echo "Deployed ClickOnce files (including index.html) to: $targetDir and $latestDir"
+    
+    - name: Commit and push to gh-pages
+      shell: pwsh
+      working-directory: gh-pages
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .
+        git commit -m "Deploy version ${{ steps.version.outputs.TAG }}"
+        git push
+    
+    - name: Create ZIP archive for release
+      shell: pwsh
+      run: |
+        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
+        Compress-Archive -Path "$publishDir/*" -DestinationPath "windows-x64-installer.zip"
+    
+    - name: Upload ZIP to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./windows-x64-installer.zip
+        asset_name: windows-x64-installer.zip
+        asset_content_type: application/zip
