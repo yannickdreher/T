@@ -43,7 +43,7 @@ jobs:
         Write-Host "Installing Visual Studio 2026 Build Tools with MSBuild 18..."
         
         choco install visualstudio2026buildtools `
-          --package-parameters "--add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Component.ClickOnce.MSBuild --add Microsoft.VisualStudio.Component.ClickOnce.Publish --quiet --norestart --wait" `
+          --package-parameters "--add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Workload.NetCoreTools --add Microsoft.NetCore.Component.SDK --add Microsoft.VisualStudio.Component.ClickOnce.MSBuild --add Microsoft.VisualStudio.Component.ClickOnce.Publish --quiet --norestart --wait" `
           --yes --no-progress
         
         Write-Host "✓ Visual Studio 2026 Build Tools installed"
@@ -52,12 +52,7 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Adding MSBuild 18 to PATH..."
-        $msbuildPath = "C:\Program Files (x86)\Microsoft Visual Studio\2026\BuildTools\MSBuild\Current\Bin\amd64"
-        
-        if (-not (Test-Path "$msbuildPath\MSBuild.exe"))
-        {
-          $msbuildPath = "C:\Program Files (x86)\Microsoft Visual Studio\2026\BuildTools\MSBuild\Current\Bin"
-        }
+        $msbuildPath = "C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin"
         
         if (Test-Path "$msbuildPath\MSBuild.exe")
         {
