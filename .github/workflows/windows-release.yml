@@ -56,7 +56,7 @@ jobs:
         echo "Updated InstallUrl to: $installUrl"
         echo "Updated UpdateUrl to: $updateUrl"
     
-    - name: Restore dependencies with MSBuild
+    - name: Restore dependencies
       shell: pwsh
       run: |
         msbuild T/T.csproj `
@@ -64,7 +64,7 @@ jobs:
           /p:Configuration=Release `
           /p:RuntimeIdentifier=win-x64
     
-    - name: Publish
+    - name: Publish application
       shell: pwsh
       run: |
         msbuild T/T.csproj `
@@ -73,10 +73,10 @@ jobs:
           /p:Configuration=Release `
           /p:RuntimeIdentifier=win-x64
     
-    - name: Verify
+    - name: Verify publish directory
       shell: pwsh
       run: |
-        $publishDir = "T/bin/publish"
+        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
         echo "Checking publish directory: $publishDir"
         if (Test-Path $publishDir) {
           echo "Contents of publish directory:"
@@ -95,7 +95,7 @@ jobs:
     - name: Deploy to GitHub Pages
       shell: pwsh
       run: |
-        $publishDir = "T/bin/publish"
+        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
         
         $tag = "${{ steps.version.outputs.TAG }}"
         $ghPagesDir = "gh-pages"
@@ -123,7 +123,7 @@ jobs:
     - name: Create archive
       shell: pwsh
       run: |
-        $publishDir = "T/bin/publish"
+        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
         Compress-Archive -Path "$publishDir/*" -DestinationPath "windows-x64-clickonce.zip"
     
     - name: Upload archive
