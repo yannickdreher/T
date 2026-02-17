@@ -28,44 +28,15 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
-          ${{ runner.os }}-nuget-
+          ${{ runner.os }}-nuget
     
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-    
-    - name: Install Visual Studio 2026 Build Tools
-      shell: pwsh
-      run: |
-        Write-Host "Installing Visual Studio 2026 Build Tools with MSBuild 18..."
-        
-        choco install visualstudio2026buildtools `
-          --package-parameters "--add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Workload.NetCoreTools --add Microsoft.NetCore.Component.SDK --add Microsoft.VisualStudio.Component.ClickOnce.MSBuild --add Microsoft.VisualStudio.Component.ClickOnce.Publish --quiet --norestart --wait" `
-          --yes --no-progress
-        
-        Write-Host "✓ Visual Studio 2026 Build Tools installed"
-    
-    - name: Setup MSBuild 18
-      shell: pwsh
-      run: |
-        Write-Host "Adding MSBuild 18 to PATH..."
-        $msbuildPath = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin"
-        
-        if (Test-Path "$msbuildPath\MSBuild.exe")
-        {
-          echo "$msbuildPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "✓ MSBuild 18 added to PATH: $msbuildPath"
-          & "$msbuildPath\MSBuild.exe" -version
-        }
-        else
-        {
-          Write-Host "✗ ERROR: MSBuild not found at: $msbuildPath"
-          exit 1
-        }
-    
+
     - name: Extract version from tag
       id: version
       shell: pwsh
@@ -103,23 +74,30 @@ jobs:
         echo "Updated ApplicationVersion to: $version"
         echo "Updated InstallUrl to: $installUrl"
         echo "Updated UpdateUrl to: $updateUrl"
+        
+        echo ""
+        echo "=== Verification ==="
+        [xml]$verification = Get-Content $pubxmlPath
+        echo "ApplicationVersion: $($verification.Project.PropertyGroup.ApplicationVersion)"
+        echo "InstallUrl: $($verification.Project.PropertyGroup.InstallUrl)"
+        echo "UpdateUrl: $($verification.Project.PropertyGroup.UpdateUrl)"
+        echo "PublishDir: $($verification.Project.PropertyGroup.PublishDir)"
+        echo "PublishUrl: $($verification.Project.PropertyGroup.PublishUrl)"
     
     - name: Restore dependencies
       shell: pwsh
       run: |
-        msbuild T/T.csproj `
-          /t:Restore `
-          /p:Configuration=Release `
-          /p:RuntimeIdentifier=win-x64
+        dotnet restore T/T.csproj -r win-x64
     
     - name: Publish application
       shell: pwsh
       run: |
-        msbuild T/T.csproj `
+        dotnet msbuild T/T.csproj `
           /t:Publish `
           /p:PublishProfile=win-x64-co `
           /p:Configuration=Release `
           /p:RuntimeIdentifier=win-x64
+          /v:detailed
     
     - name: Verify publish directory
       shell: pwsh
