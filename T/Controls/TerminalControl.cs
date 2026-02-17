@@ -777,7 +777,10 @@ public class TerminalControl : Control
         {
             var text = await ClipboardExtensions.TryGetTextAsync(clipboard);
             if (!string.IsNullOrEmpty(text))
+            {
+                text = text.Replace("\r\n", "\r").Replace("\n", "\r");
                 InputReceived?.Invoke(text);
+            }
         }
         catch { /* Ignore clipboard errors */ }
     }
