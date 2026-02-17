@@ -4,11 +4,21 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: windows-latest
-    permissions:
-      contents: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
     - name: Checkout code
@@ -43,8 +53,9 @@ jobs:
         $version = "${{ steps.version.outputs.VERSION }}"
         $tag = "${{ steps.version.outputs.TAG }}"
         
-        $installUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/$tag/"
-        $updateUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest/"
+        $baseUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+        $installUrl = "$baseUrl/$tag/"
+        $updateUrl = "$baseUrl/latest/"
         
         [xml]$pubxml = Get-Content $pubxmlPath
         $pubxml.Project.PropertyGroup.ApplicationVersion = $version
@@ -86,21 +97,14 @@ jobs:
           exit 1
         }
     
-    - name: Checkout gh-pages branch
-      uses: actions/checkout@v4
-      with:
-        ref: gh-pages
-        path: gh-pages
-    
-    - name: Deploy to GitHub Pages
+    - name: Prepare GitHub Pages content
       shell: pwsh
       run: |
         $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
-        
         $tag = "${{ steps.version.outputs.TAG }}"
-        $ghPagesDir = "gh-pages"
-        $targetDir = "$ghPagesDir/$tag"
-        $latestDir = "$ghPagesDir/latest"
+        $pagesDir = "pages-content"
+        $targetDir = "$pagesDir/$tag"
+        $latestDir = "$pagesDir/latest"
         
         New-Item -ItemType Directory -Path $targetDir -Force
         New-Item -ItemType Directory -Path $latestDir -Force
@@ -108,17 +112,20 @@ jobs:
         Copy-Item -Path "$publishDir/*" -Destination $targetDir -Recurse -Force
         Copy-Item -Path "$publishDir/*" -Destination $latestDir -Recurse -Force
         
-        echo "Deployed ClickOnce files to: $targetDir and $latestDir"
+        echo "Prepared Pages content structure:"
+        Get-ChildItem -Path $pagesDir -Recurse -Directory | Select-Object FullName
     
-    - name: Commit and push to gh-pages
-      shell: pwsh
-      working-directory: gh-pages
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git add .
-        git diff --staged --quiet || git commit -m "Deploy version ${{ steps.version.outputs.TAG }}"
-        git push
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+    
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: 'pages-content'
+    
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
     
     - name: Create archive
       shell: pwsh
