@@ -56,8 +56,14 @@ jobs:
         echo "Updated InstallUrl to: $installUrl"
         echo "Updated UpdateUrl to: $updateUrl"
     
-    - name: Restore dependencies
-      run: dotnet restore T/T.csproj
+    - name: Restore dependencies with MSBuild
+      shell: pwsh
+      run: |
+        msbuild T/T.csproj `
+          /t:Restore `
+          /p:Configuration=Release `
+          /p:Platform="Any CPU" `
+          /p:RuntimeIdentifier=win-x64
     
     - name: Publish
       shell: pwsh
