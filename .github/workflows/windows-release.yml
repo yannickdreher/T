@@ -40,57 +40,7 @@ jobs:
     - name: Setup MSBuild (Visual Studio)
       uses: microsoft/setup-msbuild@v2
       with:
-        vs-version: '[17.14,18.0)'
         msbuild-architecture: x64
-    
-    - name: Install Visual Studio components
-      shell: pwsh
-      run: |
-        Write-Host "Installing .NET 10.0 Runtime and ClickOnce support..."
-        
-        $vsInstallerPath = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe"
-        
-        if (Test-Path $vsInstallerPath) {
-          # Modify Visual Studio to include .NET 10 and ClickOnce components
-          Start-Process -FilePath $vsInstallerPath -ArgumentList `
-            'modify', `
-            '--installPath', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise', `
-            '--add', 'Microsoft.Net.Component.4.8.SDK', `
-            '--add', 'Microsoft.NetCore.Component.Runtime.10.0', `
-            '--add', 'Microsoft.NetCore.Component.SDK', `
-            '--add', 'Microsoft.VisualStudio.Component.ClickOnce.MSBuild', `
-            '--add', 'Microsoft.VisualStudio.Component.ClickOnce.Publish', `
-            '--quiet', `
-            '--norestart', `
-            '--wait' `
-            -Wait -NoNewWindow
-          
-          Write-Host "✓ Visual Studio components installed"
-          
-          # Verify ClickOnce Bootstrapper packages
-          $bootstrapperPath = "C:\Program Files (x86)\Microsoft SDKs\ClickOnce Bootstrapper\Packages"
-          if (Test-Path $bootstrapperPath) {
-            Write-Host ""
-            Write-Host "Available Bootstrapper packages:"
-            Get-ChildItem -Path $bootstrapperPath -Directory | Select-Object Name
-          }
-        } else {
-          Write-Host "⚠ Visual Studio Installer not found at expected location"
-          Write-Host "Checking alternative paths..."
-          
-          # Try finding VS Installer in other locations
-          $altPaths = @(
-            "C:\Program Files\Microsoft Visual Studio\Installer\vs_installer.exe",
-            "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installershell.exe"
-          )
-          
-          foreach ($path in $altPaths) {
-            if (Test-Path $path) {
-              Write-Host "Found installer at: $path"
-              break
-            }
-          }
-        }
     
     - name: Extract version from tag
       id: version
