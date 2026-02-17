@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using T.ViewModels;
@@ -12,18 +13,18 @@ public partial class FileExplorer : UserControl
         InitializeComponent();
     }
 
-    private async void OnFileDoubleTapped(object? sender, RoutedEventArgs e)
+    private void OnFileDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is not SessionViewModel vm || vm.SelectedFile == null)
             return;
 
         if (vm.SelectedFile.IsDirectory)
         {
-            await vm.NavigateToCommand.ExecuteAsync(vm.SelectedFile);
+            _ = vm.NavigateToCommand.ExecuteAsync(vm.SelectedFile);
         }
         else
         {
-            await vm.OpenFileCommand.ExecuteAsync(vm.SelectedFile);
+            _ = vm.OpenFileCommand.ExecuteAsync(vm.SelectedFile);
         }
     }
 
