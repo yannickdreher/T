@@ -1,15 +1,27 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace T.Views.Dialogs;
 
 public partial class AboutDialog : UserControl
 {
+    public string Version { get; }
+
     public AboutDialog()
     {
         InitializeComponent();
+        Version = GetAssemblyVersion();
+        DataContext = this;
+    }
+
+    private static string GetAssemblyVersion()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version;
+        return version != null ? $"Version {version.Major}.{version.Minor}.{version.Build}" : "Version Unknown";
     }
 
     private void OnViewLicenseClick(object? sender, RoutedEventArgs e)

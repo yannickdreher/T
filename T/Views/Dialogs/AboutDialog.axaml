@@ -2,7 +2,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:svg="using:Avalonia.Svg.Skia"
-             x:Class="T.Views.Dialogs.AboutDialog">
+             xmlns:dialogs="using:T.Views.Dialogs"
+             x:Class="T.Views.Dialogs.AboutDialog"
+             x:DataType="dialogs:AboutDialog">
 
     <ScrollViewer>
         <StackPanel Spacing="16" Margin="8">
@@ -13,7 +15,7 @@
                            FontSize="24"
                            FontWeight="Bold"
                            HorizontalAlignment="Center"/>
-                <TextBlock Text="Version 1.0.0"
+                <TextBlock Text="{Binding Version}"
                            FontSize="14"
                            Opacity="0.7"
                            HorizontalAlignment="Center"/>
@@ -122,6 +124,15 @@
                             <TextBlock Text="Svg.Controls.Skia" FontWeight="SemiBold"/>
                             <TextBlock Text="License: MIT" FontSize="12" Opacity="0.7"/>
                             <TextBlock Text="© wieslawsoltes" FontSize="12" Opacity="0.7"/>
+                        </StackPanel>
+
+                        <Separator/>
+
+                        <!-- Velopack -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Velopack" FontWeight="SemiBold"/>
+                            <TextBlock Text="License: MIT" FontSize="12" Opacity="0.7"/>
+                            <TextBlock Text="© Caelan Sayler" FontSize="12" Opacity="0.7"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>

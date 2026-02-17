@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -11,12 +12,15 @@ using T.Models;
 using T.Services;
 using T.Views;
 using T.Views.Dialogs;
+using Velopack;
+using Velopack.Sources;
 
 namespace T.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly ISessionStorageService _storageService;
+    private readonly UpdateManager? _updateManager;
     private Window? _host;
 
     [ObservableProperty] private ObservableCollection<SshSession> _sessions = [];
@@ -43,6 +47,10 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _storageService = storageService;
 
+        // Velopack Update Manager initialisieren
+        _updateManager = new UpdateManager(
+            new GithubSource("https://github.com/yannickdreher/T", null, false));
+        
         SettingsService.Load();
         OnPropertyChanged(nameof(Settings));
 
@@ -50,6 +58,9 @@ public partial class MainWindowViewModel : ViewModelBase
             LoadDesignTimeData();
         else
             _ = LoadAllAsync();
+
+        // Automatisch nach Updates suchen beim Start
+        _ = CheckForUpdatesAsync();
     }
 
     /// <summary>
@@ -569,5 +580,27 @@ public partial class MainWindowViewModel : ViewModelBase
         };
 
         await dialog.ShowAsync(_host);
+    }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (_updateManager == null) return;
+
+        try
+        {
+            var updateInfo = await _updateManager.CheckForUpdatesAsync();
+            if (updateInfo != null)
+            {
+                // Update verfügbar - herunterladen und installieren
+                await _updateManager.DownloadUpdatesAsync(updateInfo);
+                _updateManager.ApplyUpdatesAndRestart(updateInfo);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Update-Fehler behandeln (optional)
+            Console.WriteLine($"Update check failed: {ex.Message}");
+        }
     }
 }

@@ -42,6 +42,11 @@ This project uses the following open-source libraries:
 - **Copyright**: © wieslawsoltes
 - **Source**: https://github.com/wieslawsoltes/Svg.Skia
 
+## Velopack
+- **License**: MIT
+- **Copyright**: © Caelan Sayler
+- **Source**: https://github.com/velopack/velopack
+
 ---
 
 All third-party licenses are compatible with the GNU GPLv3 license of this project.

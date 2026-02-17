@@ -6,19 +6,10 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: windows-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
     - name: Checkout code
@@ -36,127 +27,57 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-
+    
     - name: Extract version from tag
       id: version
       shell: pwsh
       run: |
         $tag = "${{ github.event.release.tag_name }}"
         $version = $tag -replace '^v', ''
-        $versionParts = $version.Split('.')
-
-        if ($versionParts.Length -eq 3)
-        {
-          $version = "$version.0"
-        }
-
         echo "VERSION=$version" >> $env:GITHUB_OUTPUT
         echo "TAG=$tag" >> $env:GITHUB_OUTPUT
         echo "Version: $version"
     
-    - name: Update publish profile
+    - name: Install Velopack
       shell: pwsh
       run: |
-        $pubxmlPath = "T/Properties/PublishProfiles/win-x64-co.pubxml"
-        $version = "${{ steps.version.outputs.VERSION }}"
-        $tag = "${{ steps.version.outputs.TAG }}"
-        
-        $baseUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-        $installUrl = "$baseUrl/$tag/"
-        $updateUrl = "$baseUrl/"
-        
-        [xml]$pubxml = Get-Content $pubxmlPath
-        $pubxml.Project.PropertyGroup.ApplicationVersion = $version
-        $pubxml.Project.PropertyGroup.InstallUrl = $installUrl
-        $pubxml.Project.PropertyGroup.UpdateUrl = $updateUrl
-        
-        $pubxml.Save($pubxmlPath)
-        echo "Updated ApplicationVersion to: $version"
-        echo "Updated InstallUrl to: $installUrl"
-        echo "Updated UpdateUrl to: $updateUrl"
-        
-        echo ""
-        echo "=== Verification ==="
-        [xml]$verification = Get-Content $pubxmlPath
-        echo "ApplicationVersion: $($verification.Project.PropertyGroup.ApplicationVersion)"
-        echo "InstallUrl: $($verification.Project.PropertyGroup.InstallUrl)"
-        echo "UpdateUrl: $($verification.Project.PropertyGroup.UpdateUrl)"
-        echo "PublishDir: $($verification.Project.PropertyGroup.PublishDir)"
-        echo "PublishUrl: $($verification.Project.PropertyGroup.PublishUrl)"
+        dotnet tool install -g vpk
     
     - name: Restore dependencies
       shell: pwsh
       run: |
-        dotnet restore T/T.csproj -r win-x64
+        dotnet restore T/T.csproj
     
     - name: Publish application
       shell: pwsh
       run: |
-        dotnet msbuild T/T.csproj `
-          /t:Publish `
-          /p:PublishProfile=win-x64-co `
-          /p:Configuration=Release `
-          /p:RuntimeIdentifier=win-x64
-          /v:detailed
+        dotnet publish T/T.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained `
+          -p:Version=${{ steps.version.outputs.VERSION }} `
+          -o publish/
     
-    - name: Verify publish directory
+    - name: Package with Velopack
       shell: pwsh
       run: |
-        $publishDir = "T/bin/Release/net10.0/win-x64/app.publish"
-        echo "Checking publish directory: $publishDir"
-        if (Test-Path $publishDir)
-        {
-          echo "✓ Contents of publish directory:"
-          Get-ChildItem -Path $publishDir -Recurse -File | Select-Object FullName
-        }
-        else
-        {
-          echo "ERROR: No publish directory found!"
-          exit 1
-        }
-        
-        if (-not $env:PUBLISH_DIR) {
-          echo "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
-        }
+        vpk pack `
+          -u T `
+          -v ${{ steps.version.outputs.VERSION }} `
+          -p publish/ `
+          -e T.exe `
+          -i T/Assets/logo.ico `
+          -s T/Assets/logo.svg `
+          -o releases/ `
+          --packTitle "T" `
+          --packAuthors "Yannick Dreher"
+          --framework "net10-x64-desktop,vcredist143-x64"
     
-    - name: Prepare GitHub Pages content
-      shell: pwsh
-      run: |
-        $publishDir = $env:PUBLISH_DIR
-        $tag = "${{ steps.version.outputs.TAG }}"
-        $pagesDir = "pages-content"
-        $targetDir = "$pagesDir/$tag"
-        
-        New-Item -ItemType Directory -Path $targetDir -Force
-        
-        Copy-Item -Path "$publishDir/*" -Destination $targetDir -Recurse -Force
-        Copy-Item -Path "$publishDir/*" -Destination $pagesDir -Recurse -Force
-        
-        echo "✓ Deployed ClickOnce files:"
-        echo "  - Version-specific: /$tag/"
-        echo "  - Latest (root): /"
-    
-    - name: Setup Pages
-      uses: actions/configure-pages@v5
-    
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
       with:
-        path: 'pages-content'
-    
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
-    
-    - name: Create archive
-      shell: pwsh
-      run: |
-        $publishDir = $env:PUBLISH_DIR
-        Compress-Archive -Path "$publishDir/*" -DestinationPath "windows-x64-clickonce.zip"
-    
-    - name: Upload archive
-      uses: softprops/action-gh-release@v1
-      with:
-        files: windows-x64-clickonce.zip
+        files: |
+          releases/*.exe
+          releases/RELEASES
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
