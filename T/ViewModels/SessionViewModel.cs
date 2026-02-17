@@ -365,11 +365,14 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     private async Task DeleteFileAsync()
     {
         if (SelectedFile == null || _sshService == null) return;
+        
+        var deletedFileName = SelectedFile.Name;
+        
         try
         {
             await _sshService.DeleteAsync(SelectedFile.FullPath, SelectedFile.IsDirectory);
             await RefreshDirectoryAsync();
-            StatusMessage = $"Deleted: {SelectedFile.Name}";
+            StatusMessage = $"Deleted: {deletedFileName}";
         }
         catch (Exception ex) { StatusMessage = $"Delete failed: {ex.Message}"; }
     }
@@ -377,10 +380,14 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     public async Task ChangePermissionsAsync(short permissions)
     {
         if (SelectedFile == null || _sshService == null) return;
+        
+        var fileName = SelectedFile.Name;
+        
         try
         {
             await _sshService.ChangePermissionsAsync(SelectedFile.FullPath, permissions);
-            StatusMessage = $"Permissions changed: {SelectedFile.Name}";
+            await RefreshDirectoryAsync();
+            StatusMessage = $"Permissions changed: {fileName}";
         }
         catch (Exception ex) { StatusMessage = $"Change permissions failed: {ex.Message}"; }
     }

@@ -233,9 +233,18 @@ public class VirtualTerminal(int width = 80, int height = 24)
         switch (c)
         {
             case '\x1B': _state = ParserState.Escape; break;
-            case '\r': _cursorColumn = 0; break;
+            case '\r': 
+                _cursorColumn = 0;
+                MarkDirty(_cursorRow); // Fix: Zeile als dirty markieren
+                break;
             case '\n' or '\x0B' or '\x0C': LineFeed(); break;
-            case '\b': if (_cursorColumn > 0) _cursorColumn--; break;
+            case '\b': 
+                if (_cursorColumn > 0) 
+                {
+                    _cursorColumn--;
+                    MarkDirty(_cursorRow); // Fix: Zeile als dirty markieren
+                }
+                break;
             case '\t': Tab(); break;
             case '\a': break; // Bell
             case (char)127: break; // DEL
