@@ -509,7 +509,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (result == ContentDialogResult.Primary)
         {
-            await ActiveSession.ChangePermissionsAsync(vm.ToPermissions());
+            await ActiveSession.ChangePermissionsAsync(vm.ToOctal());
         }
     }
 

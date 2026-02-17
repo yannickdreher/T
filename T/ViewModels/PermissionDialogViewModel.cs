@@ -15,24 +15,18 @@ public partial class PermissionDialogViewModel : ViewModelBase
     [ObservableProperty] private bool _otherWrite;
     [ObservableProperty] private bool _otherExecute;
 
-    public short ToPermissions()
+    public short ToOctal()
     {
-        short perms = 0;
-        if (OwnerRead) perms |= 0x100;
-        if (OwnerWrite) perms |= 0x080;
-        if (OwnerExecute) perms |= 0x040;
-        if (GroupRead) perms |= 0x020;
-        if (GroupWrite) perms |= 0x010;
-        if (GroupExecute) perms |= 0x008;
-        if (OtherRead) perms |= 0x004;
-        if (OtherWrite) perms |= 0x002;
-        if (OtherExecute) perms |= 0x001;
-        return perms;
+        int owner = (OwnerRead ? 4 : 0) + (OwnerWrite ? 2 : 0) + (OwnerExecute ? 1 : 0);
+        int group = (GroupRead ? 4 : 0) + (GroupWrite ? 2 : 0) + (GroupExecute ? 1 : 0);
+        int other = (OtherRead ? 4 : 0) + (OtherWrite ? 2 : 0) + (OtherExecute ? 1 : 0);
+        
+        return (short)(owner * 100 + group * 10 + other);
     }
 
-    public static PermissionDialogViewModel FromOctal(string octalPermissions)
+    public static PermissionDialogViewModel FromOctal(string permissions)
     {
-        var perms = Convert.ToInt32(octalPermissions, 8);
+        var perms = Convert.ToInt32(permissions, 8);
         return new PermissionDialogViewModel
         {
             OwnerRead = (perms & 0x100) != 0,
