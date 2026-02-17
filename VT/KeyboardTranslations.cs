@@ -60,8 +60,8 @@ public static class KeyboardTranslations
         // Special keys
         { "Back", new("\x7f", "\b", "\x7f") },
         { "Tab", new("\t", "\x1b[Z") },
-        { "Enter", new("\n", "\n", "\n") },
-        { "Return", new("\n", "\n", "\n") },
+        { "Enter", new("\r", "\r", "\r") },
+        { "Return", new("\r", "\r", "\r") },
         { "Escape", new("\x1b\x1b", "\x1b\x1b", "\x1b\x1b") },
         { "Space", new(" ", " ", "\x00") },
         
