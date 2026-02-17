@@ -62,7 +62,6 @@ jobs:
         msbuild T/T.csproj `
           /t:Restore `
           /p:Configuration=Release `
-          /p:Platform="Any CPU" `
           /p:RuntimeIdentifier=win-x64
     
     - name: Publish
@@ -72,7 +71,6 @@ jobs:
           /t:Publish `
           /p:PublishProfile=win-x64-co `
           /p:Configuration=Release `
-          /p:Platform="Any CPU" `
           /p:RuntimeIdentifier=win-x64
     
     - name: Verify
