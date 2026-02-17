@@ -243,7 +243,11 @@ public class SshService : IDisposable
         string buffered;
         lock (_outputLock)
         {
-            if (_outputBuffer.Length == 0) return;
+            if (_outputBuffer.Length == 0)
+            {
+                _outputBatchTimer.Stop(); // Optimierung: Timer stoppen wenn nichts zu tun ist
+                return;
+            }
             
             buffered = _outputBuffer.ToString();
             _outputBuffer.Clear();
@@ -479,7 +483,6 @@ public class SshService : IDisposable
     private static ConnectionInfo CreateConnectionInfo(SshSession session)
     {
         var authMethods = new List<AuthenticationMethod>();
-
         if (!string.IsNullOrEmpty(session.PrivateKeyPath) && File.Exists(session.PrivateKeyPath))
         {
             try
