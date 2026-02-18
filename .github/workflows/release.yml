@@ -1,4 +1,4 @@
-﻿name: Windows Release
+﻿name: Release
 
 on:
   release:
@@ -8,7 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  publish:
+  publish-windows:
+    name: Publish Windows
     runs-on: windows-latest
     
     steps:
@@ -67,7 +68,6 @@ jobs:
           -p publish/ `
           -e T.exe `
           -i T/Assets/logo.ico `
-          -s T/Assets/logo.svg `
           -o releases/ `
           --packTitle "T" `
           --packAuthors "The T Project Contributors"
@@ -77,6 +77,75 @@ jobs:
       with:
         files: |
           releases/*.exe
+          releases/RELEASES
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-linux:
+    name: Publish Linux
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    
+    - name: Extract version from tag
+      id: version
+      shell: bash
+      run: |
+        tag="${{ github.event.release.tag_name }}"
+        version="${tag#v}"
+        echo "VERSION=$version" >> $GITHUB_OUTPUT
+        echo "TAG=$tag" >> $GITHUB_OUTPUT
+        echo "Version: $version"
+    
+    - name: Install Velopack
+      run: |
+        dotnet tool install -g vpk
+    
+    - name: Restore dependencies
+      run: |
+        dotnet restore T/T.csproj
+    
+    - name: Publish application
+      run: |
+        dotnet publish T/T.csproj \
+          -c Release \
+          -r linux-x64 \
+          --self-contained \
+          -p:Version=${{ steps.version.outputs.VERSION }} \
+          -o publish/
+    
+    - name: Package with Velopack
+      run: |
+        vpk pack \
+          -u T \
+          -v ${{ steps.version.outputs.VERSION }} \
+          -p publish/ \
+          -e T \
+          -i T/Assets/logo.ico `
+          -o releases/ \
+          --packTitle "T" \
+          --packAuthors "The T Project Contributors"
+    
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          releases/*.AppImage
           releases/RELEASES
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
