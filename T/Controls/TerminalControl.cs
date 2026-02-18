@@ -25,7 +25,6 @@ public class TerminalControl : Control
     private readonly DispatcherTimer _cursorBlinkTimer;
     private readonly StringBuilder _textRunBuilder = new(512);
 
-    // Render Cache
     private class RowRenderCache
     {
         public readonly List<(double X, FormattedText Text, bool Underline, Color Foreground)> TextRuns = [];
@@ -40,22 +39,17 @@ public class TerminalControl : Control
         }
     }
     
-    // Cache per screen row
     private RowRenderCache[] _rowCaches = [];
 
-    // Selection
     private bool _isSelecting;
     private int _selectionStartCol, _selectionStartRow;
     private int _selectionEndCol, _selectionEndRow;
 
-    // Scrolling
     private int _scrollOffset;
 
-    // Size tracking
     private uint _terminalColumns;
     private uint _terminalRows;
 
-    // Render caches
     private readonly Dictionary<Color, SolidColorBrush> _brushCache = [];
     private Typeface _cachedTypeface;
     private Typeface _cachedBoldTypeface;
@@ -139,7 +133,6 @@ public class TerminalControl : Control
 
     #endregion
 
-    // Events
     public event Action<uint, uint, uint, uint>? TerminalResized;
     public event Action<string>? InputReceived;
 
@@ -149,9 +142,12 @@ public class TerminalControl : Control
         IsTabStop = true;
         ClipToBounds = true;
 
-        // Weniger häufiges Blinken spart auch etwas Last
         _cursorBlinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(530) };
-        _cursorBlinkTimer.Tick += (_, _) => { _cursorBlink = !_cursorBlink; InvalidateVisual(); };
+        _cursorBlinkTimer.Tick += (_, _) => 
+        { 
+            _cursorBlink = !_cursorBlink;
+            InvalidateVisual();
+        };
     }
 
     static TerminalControl()
@@ -178,7 +174,6 @@ public class TerminalControl : Control
         bool wasBottom = _scrollOffset == 0;
         _terminal.Feed(text);
         
-        // Auto-scroll logic if we were at bottom
         if (wasBottom && _scrollOffset != 0) 
         {
             _scrollOffset = 0;
@@ -255,7 +250,6 @@ public class TerminalControl : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        System.Diagnostics.Debug.WriteLine($"OnAttachedToVisualTree: Bounds={Bounds}");
         UpdateMetrics();
     }
 
@@ -265,17 +259,14 @@ public class TerminalControl : Control
         _cursorBlinkTimer.Stop();
     }
 
-    protected override Size MeasureOverride(Size s) 
+    protected override Size MeasureOverride(Size availableSize) 
     {
-        System.Diagnostics.Debug.WriteLine($"MeasureOverride: availableSize={s}");
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
-        return s; 
+        return availableSize; 
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        System.Diagnostics.Debug.WriteLine($"ArrangeOverride START: finalSize={finalSize}, Bounds={Bounds}, _terminal={(_terminal == null ? "null" : "exists")}");
-        
         if (finalSize.Width <= 10 || finalSize.Height <= 10) return finalSize;
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
         if (_charWidth <= 0 || _lineHeight <= 0) return finalSize;
@@ -286,9 +277,6 @@ public class TerminalControl : Control
         
         var newColumns = (uint)Math.Max(20, availableWidth / _charWidth);
         var newRows = (uint)Math.Max(5, availableHeight / _lineHeight);
-        
-        // DEBUGGING
-        System.Diagnostics.Debug.WriteLine($"ArrangeOverride: finalSize={finalSize}, charW={_charWidth:F2}, lineH={_lineHeight:F2}, cols={newColumns}, rows={newRows}, padding={padding}");
         
         bool colsChanged = newColumns != _terminalColumns;
         bool rowsChanged = newRows != _terminalRows;
@@ -302,13 +290,10 @@ public class TerminalControl : Control
             _terminal = new VirtualTerminal((int)newColumns, (int)newRows);
             _terminal.ScreenChanged += OnTerminalScreenChanged;
             
-            System.Diagnostics.Debug.WriteLine($"Terminal created: {newColumns}x{newRows}");
             TerminalResized?.Invoke(newColumns, newRows, (uint)availableWidth, (uint)availableHeight);
         }
         else if (colsChanged || rowsChanged)
         {
-            System.Diagnostics.Debug.WriteLine($"Terminal resized: {_terminalColumns}x{_terminalRows} -> {newColumns}x{newRows}");
-            
             _terminalColumns = newColumns;
             _terminalRows = newRows;
             ResizeCache((int)newRows);
@@ -334,7 +319,6 @@ public class TerminalControl : Control
 
     private void OnTerminalScreenChanged()
     {
-        // Mark changed rows as dirty in our cache
         if (_terminal != null && _rowCaches.Length > 0)
         {
             if (_terminal.DirtyTop <= _terminal.DirtyBottom)
@@ -348,6 +332,7 @@ public class TerminalControl : Control
                 }
             }
         }
+        
         Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Render);
     }
 
@@ -357,8 +342,6 @@ public class TerminalControl : Control
 
     public override void Render(DrawingContext context)
     {
-        System.Diagnostics.Debug.WriteLine($"Render: _terminal={(_terminal == null ? "null" : $"{_terminal.Width}x{_terminal.Height}")}, Bounds={Bounds}");
-        
         if (_terminal == null) return;
 
         var defaultBg = DefaultBackground;
@@ -391,8 +374,6 @@ public class TerminalControl : Control
         int height = terminal.Height;
         int scrollbackCount = terminal.Scrollback.Count;
         int visibleStart = Math.Max(0, scrollbackCount - _scrollOffset);
-
-        System.Diagnostics.Debug.WriteLine($"RenderContent: width={width}, height={height}, _rowCaches.Length={_rowCaches.Length}");
 
         int cursorCol = terminal.CursorColumn;
         int cursorRow = terminal.CursorRow;
@@ -487,12 +468,10 @@ public class TerminalControl : Control
                cell = terminal.GetCell(col, rowInBuffer);
             }
 
-            // Resolve Colors
             var cellBg = cell.Background.IsDefault ? defaultBg : ResolveColor(cell.Background, defaultBg);
             var cellFg = cell.Foreground.IsDefault ? defaultFg : ResolveColor(cell.Foreground, defaultFg);
             if (cell.IsInverse) (cellFg, cellBg) = (cellBg, cellFg);
 
-            // --- Background Logic ---
             if (cellBg != currentBg)
             {
                 if (bgRunStart != -1 && currentBg != defaultBg)
@@ -505,7 +484,6 @@ public class TerminalControl : Control
                 bgRunStart = col;
             }
 
-            // --- Text Logic ---
             char c = (cell.Char == '\0' || cell.IsHidden) ? ' ' : cell.Char;
             
             if (cellFg != currentTextFg || cell.IsBold != currentBold || cell.IsUnderline != currentUnderline)
@@ -526,7 +504,6 @@ public class TerminalControl : Control
             _textRunBuilder.Append(c);
         }
 
-        // Finalize runs
         if (bgRunStart != -1 && currentBg != defaultBg)
         {
             double runX = bgRunStart * _charWidth;
@@ -587,12 +564,6 @@ public class TerminalControl : Control
 
     private bool HasSelection() =>
         _selectionStartRow != _selectionEndRow || _selectionStartCol != _selectionEndCol;
-
-    private bool IsRowInSelection(int row)
-    {
-        var (s, e) = OrderedRows();
-        return row >= s && row <= e;
-    }
 
     private (int start, int end) OrderedRows() =>
         _selectionStartRow <= _selectionEndRow
@@ -739,7 +710,6 @@ public class TerminalControl : Control
         }
 
         _cursorBlink = true;
-        InvalidateVisual();
     }
 
     protected override void OnTextInput(TextInputEventArgs e)
@@ -757,7 +727,6 @@ public class TerminalControl : Control
             InputReceived?.Invoke(e.Text);
             e.Handled = true;
             _cursorBlink = true;
-            InvalidateVisual();
         }
     }
 
