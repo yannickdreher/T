@@ -12,26 +12,21 @@ using T.Models;
 using T.Services;
 using T.Views;
 using T.Views.Dialogs;
-using Velopack;
-using Velopack.Sources;
 
 namespace T.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly ISessionStorageService _storageService;
-    private readonly UpdateManager? _updateManager;
     private Window? _host;
 
     [ObservableProperty] private ObservableCollection<SshSession> _sessions = [];
     [ObservableProperty] private SshSession? _selectedSession;
 
-    // Tree - using ITreeNode interface
     [ObservableProperty] private ObservableCollection<ITreeNode> _treeNodes = [];
     [ObservableProperty] private ITreeNode? _selectedTreeNode;
     [ObservableProperty] private ObservableCollection<Folder> _folders = [];
 
-    // Active session tabs
     [ObservableProperty] private ObservableCollection<SessionViewModel> _openSessions = [];
     [ObservableProperty] private SessionViewModel? _activeSession;
 
@@ -47,20 +42,10 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _storageService = storageService;
 
-        // Velopack Update Manager initialisieren
-        _updateManager = new UpdateManager(
-            new GithubSource("https://github.com/yannickdreher/T", null, false));
-        
-        SettingsService.Load();
-        OnPropertyChanged(nameof(Settings));
-
         if (Design.IsDesignMode)
             LoadDesignTimeData();
         else
             _ = LoadAllAsync();
-
-        // Automatisch nach Updates suchen beim Start
-        _ = CheckForUpdatesAsync();
     }
 
     /// <summary>
@@ -585,27 +570,5 @@ public partial class MainWindowViewModel : ViewModelBase
         };
 
         await dialog.ShowAsync(_host);
-    }
-
-    [RelayCommand]
-    private async Task CheckForUpdatesAsync()
-    {
-        if (_updateManager == null) return;
-
-        try
-        {
-            var updateInfo = await _updateManager.CheckForUpdatesAsync();
-            if (updateInfo != null)
-            {
-                // Update verfügbar - herunterladen und installieren
-                await _updateManager.DownloadUpdatesAsync(updateInfo);
-                _updateManager.ApplyUpdatesAndRestart(updateInfo);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Update-Fehler behandeln (optional)
-            Console.WriteLine($"Update check failed: {ex.Message}");
-        }
     }
 }

@@ -1,6 +1,6 @@
+using System.Text.Json.Serialization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
-using System.Text.Json.Serialization;
 
 namespace T.Models;
 
@@ -13,6 +13,10 @@ public partial class AppSettings : ObservableObject
     [ObservableProperty] private bool _reconnectOnStartup;
     [ObservableProperty] private int _connectionTimeout = 15;
     [ObservableProperty] private int _keepAliveInterval = 30;
+
+    // Updates
+    [ObservableProperty] private bool _checkForUpdatesOnStartup = true;
+    [ObservableProperty] private string _updateChannel = "Stable";
 
     // Explorer
     [ObservableProperty] private bool _showHiddenFiles;

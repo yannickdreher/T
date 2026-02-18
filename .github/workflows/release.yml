@@ -29,15 +29,32 @@ jobs:
       with:
         dotnet-version: '10.0.x'
     
-    - name: Extract version from tag
+    - name: Extract version and channel from tag
       id: version
       shell: pwsh
       run: |
         $tag = "${{ github.event.release.tag_name }}"
-        $version = $tag -replace '^v', ''
-        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-        echo "TAG=$tag" >> $env:GITHUB_OUTPUT
-        echo "Version: $version"
+        # Tag format: v1.0.0-stable or v1.0.0-beta or v1.0.0
+        if ($tag -match '^v([0-9]+\.[0-9]+\.[0-9]+)(?:-(.+))?$') {
+            $version = $matches[1]
+            $suffix = $matches[2]
+            if ([string]::IsNullOrEmpty($suffix)) {
+                $suffix = "stable"
+            }
+            $channel = "win-x64-$suffix"
+            
+            echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+            echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+            echo "CHANNEL=$channel" >> $env:GITHUB_OUTPUT
+            echo "SUFFIX=$suffix" >> $env:GITHUB_OUTPUT
+            
+            Write-Host "Version: $version"
+            Write-Host "Channel: $channel"
+            Write-Host "Suffix: $suffix"
+        } else {
+            Write-Error "Tag format is invalid. Expected: v1.0.0-stable or v1.0.0-beta"
+            exit 1
+        }
     
     - name: Install Velopack
       shell: pwsh
@@ -70,14 +87,13 @@ jobs:
           -i T/Assets/logo.ico `
           -o releases/ `
           --packTitle "T" `
-          --packAuthors "The T Project Contributors"
+          --packAuthors "The T Project Contributors" `
+          --channel ${{ steps.version.outputs.CHANNEL }}
     
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          releases/*.exe
-          releases/RELEASES
+        files: releases/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -102,15 +118,32 @@ jobs:
       with:
         dotnet-version: '10.0.x'
     
-    - name: Extract version from tag
+    - name: Extract version and channel from tag
       id: version
       shell: bash
       run: |
         tag="${{ github.event.release.tag_name }}"
-        version="${tag#v}"
-        echo "VERSION=$version" >> $GITHUB_OUTPUT
-        echo "TAG=$tag" >> $GITHUB_OUTPUT
-        echo "Version: $version"
+        # Tag format: v1.0.0-stable or v1.0.0-beta or v1.0.0
+        if [[ $tag =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-(.+))?$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            suffix="${BASH_REMATCH[3]}"
+            if [ -z "$suffix" ]; then
+                suffix="stable"
+            fi
+            channel="linux-x64-$suffix"
+            
+            echo "VERSION=$version" >> $GITHUB_OUTPUT
+            echo "TAG=$tag" >> $GITHUB_OUTPUT
+            echo "CHANNEL=$channel" >> $GITHUB_OUTPUT
+            echo "SUFFIX=$suffix" >> $GITHUB_OUTPUT
+            
+            echo "Version: $version"
+            echo "Channel: $channel"
+            echo "Suffix: $suffix"
+        else
+            echo "Tag format is invalid. Expected: v1.0.0-stable or v1.0.0-beta"
+            exit 1
+        fi
     
     - name: Install Velopack
       run: |
@@ -136,16 +169,15 @@ jobs:
           -v ${{ steps.version.outputs.VERSION }} \
           -p publish/ \
           -e T \
-          -i T/Assets/logo.ico `
+          -i T/Assets/logo.ico \
           -o releases/ \
           --packTitle "T" \
-          --packAuthors "The T Project Contributors"
+          --packAuthors "The T Project Contributors" \
+          --channel ${{ steps.version.outputs.CHANNEL }}
     
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          releases/*.AppImage
-          releases/RELEASES
+        files: releases/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

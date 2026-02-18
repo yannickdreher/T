@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:T.ViewModels"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
@@ -91,6 +91,22 @@
 
                         <CheckBox Content="Reconnect sessions on startup"
                                   IsChecked="{Binding Settings.ReconnectOnStartup}"/>
+
+                        <Separator Margin="0,8"/>
+                        
+                        <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        
+                        <CheckBox Content="Check for updates on startup"
+                                  IsChecked="{Binding Settings.CheckForUpdatesOnStartup}"/>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Update Channel"/>
+                            <ComboBox SelectedItem="{Binding Settings.UpdateChannel}" 
+                                      HorizontalAlignment="Stretch">
+                                <sys:String>Stable</sys:String>
+                                <sys:String>Beta</sys:String>
+                            </ComboBox>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Page: Explorer -->
