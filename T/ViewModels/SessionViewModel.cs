@@ -41,13 +41,11 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _transferDirection = "";
     [ObservableProperty] private bool _isActive;
 
-    // Events
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
 
     public string DisplayName => IsConnected ? $"{Session.Name} ●" : Session.Name;
 
-    // Design-time constructor
     public SessionViewModel()
     {
         _session = new SshSession { Name = "Design Session", Host = "example.com", Username = "user" };
@@ -73,7 +71,6 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         ];
     }
 
-    // Terminal size state
     private uint _terminalColumns = 80;
     private uint _terminalRows = 24;
     private uint _terminalPixelWidth = 640;
@@ -124,6 +121,11 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             return await ShowCredentialsDialogAsync(errorMessage);
         };
 
+        _sshService.HostKeyVerificationRequired += async (hostKeyInfo) =>
+        {
+            return await ShowHostKeyDialogAsync(hostKeyInfo);
+        };
+
         _sshService.ShellDataReceived += output =>
             Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(output));
 
@@ -152,9 +154,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         {
             await _sshService.ConnectAsync();
 
-            // Ensure terminal has correct size after connection
-            _sshService.ResizeTerminal(_terminalColumns, _terminalRows, 
-                                       _terminalPixelWidth, _terminalPixelHeight);
+            _sshService.ResizeTerminal(_terminalColumns, _terminalRows, _terminalPixelWidth, _terminalPixelHeight);
 
             CurrentPath = _sshService.CurrentDirectory;
             await RefreshDirectoryAsync();
@@ -164,6 +164,38 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             StatusMessage = $"Error: {ex.Message}";
             ShowOverlay = false;
         }
+    }
+
+    private static async Task<bool> ShowHostKeyDialogAsync(HostKeyInfo hostKeyInfo)
+    {
+        bool accepted = false;
+
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var viewModel = new HostKeyDialogViewModel(hostKeyInfo);
+            var content = new HostKeyDialog { DataContext = viewModel };
+            
+            var dialog = new ContentDialog
+            {
+                Title = "Host Key Verification",
+                PrimaryButtonText = "Accept & Connect",
+                SecondaryButtonText = "Reject",
+                DefaultButton = ContentDialogButton.Secondary,
+                Content = content
+            };
+
+            var mainWindow = GetMainWindow();
+            if (mainWindow == null)
+            {
+                accepted = false;
+                return;
+            }
+
+            var result = await dialog.ShowAsync(mainWindow);
+            accepted = result == ContentDialogResult.Primary;
+        });
+
+        return accepted;
     }
 
     private bool CanConnect() => !IsConnected && !IsConnecting;

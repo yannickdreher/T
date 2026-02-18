@@ -40,6 +40,7 @@ public class SshService : IDisposable
     public event Action<TransferInfo>? TransferProgressChanged;
     public event Func<Task<SshCredentials?>>? CredentialsRequired;
     public event Func<string, Task<SshCredentials?>>? AuthenticationFailed;
+    public event Func<HostKeyInfo, Task<bool>>? HostKeyVerificationRequired;
 
     public bool IsConnected => _sshClient?.IsConnected ?? false;
     public string CurrentDirectory => _sftpClient?.WorkingDirectory ?? "/";
@@ -130,14 +131,18 @@ public class SshService : IDisposable
         connectionInfo.Timeout = TimeSpan.FromSeconds(settings.General.ConnectionTimeout);
 
         _sshClient?.ErrorOccurred -= OnSshClientError;
+        _sshClient?.HostKeyReceived -= OnHostKeyReceived;
         _sftpClient?.ErrorOccurred -= OnSftpClientError;
+        _sftpClient?.HostKeyReceived -= OnHostKeyReceived;
 
         _sshClient = new SshClient(connectionInfo);
         _sftpClient = new SftpClient(connectionInfo);
         _sshClient.KeepAliveInterval = TimeSpan.FromSeconds(settings.General.KeepAliveInterval);
 
         _sshClient.ErrorOccurred += OnSshClientError;
+        _sshClient.HostKeyReceived += OnHostKeyReceived;
         _sftpClient.ErrorOccurred += OnSftpClientError;
+        _sftpClient.HostKeyReceived += OnHostKeyReceived;
     }
 
     public void Disconnect()
@@ -235,6 +240,27 @@ public class SshService : IDisposable
             {
                 _outputBatchTimer.Start();
             }
+        }
+    }
+
+    private void OnHostKeyReceived(object? sender, HostKeyEventArgs e)
+    {
+        if (HostKeyVerificationRequired != null)
+        {
+            var hostKeyInfo = new HostKeyInfo
+            {
+                Host = _session.Host,
+                Port = _session.Port,
+                KeyType = e.HostKeyName,
+                Fingerprint = e.FingerPrintSHA256,
+                FingerprintMD5 = e.FingerPrintMD5
+            };
+
+            e.CanTrust = HostKeyVerificationRequired.Invoke(hostKeyInfo).GetAwaiter().GetResult();
+        }
+        else
+        {
+            e.CanTrust = true;
         }
     }
 
