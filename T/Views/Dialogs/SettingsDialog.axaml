@@ -58,7 +58,7 @@
                                 Spacing="8">
                         <StackPanel Spacing="4">
                             <TextBlock Text="Theme"/>
-                            <ComboBox SelectedItem="{Binding Settings.Theme}" HorizontalAlignment="Stretch">
+                            <ComboBox SelectedItem="{Binding Settings.General.Theme}" HorizontalAlignment="Stretch">
                                 <sys:String>System</sys:String>
                                 <sys:String>Light</sys:String>
                                 <sys:String>Dark</sys:String>
@@ -67,7 +67,7 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Language"/>
-                            <ComboBox SelectedItem="{Binding Settings.Language}" HorizontalAlignment="Stretch">
+                            <ComboBox SelectedItem="{Binding Settings.General.Language}" HorizontalAlignment="Stretch">
                                 <sys:String>System</sys:String>
                                 <sys:String>English</sys:String>
                                 <sys:String>Deutsch</sys:String>
@@ -76,32 +76,32 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Connection timeout (seconds)"/>
-                            <NumericUpDown Value="{Binding Settings.ConnectionTimeout}"
+                            <NumericUpDown Value="{Binding Settings.General.ConnectionTimeout}"
                                            Minimum="5" Maximum="120" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Keep-alive interval (seconds)"/>
-                            <NumericUpDown Value="{Binding Settings.KeepAliveInterval}"
+                            <NumericUpDown Value="{Binding Settings.General.KeepAliveInterval}"
                                            Minimum="10" Maximum="120" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <CheckBox Content="Confirm before closing window"
-                                  IsChecked="{Binding Settings.ConfirmOnClose}"/>
+                                  IsChecked="{Binding Settings.General.ConfirmOnClose}"/>
 
                         <CheckBox Content="Reconnect sessions on startup"
-                                  IsChecked="{Binding Settings.ReconnectOnStartup}"/>
+                                  IsChecked="{Binding Settings.General.ReconnectOnStartup}"/>
 
                         <Separator Margin="0,8"/>
                         
                         <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,4,0,0"/>
                         
                         <CheckBox Content="Check for updates on startup"
-                                  IsChecked="{Binding Settings.CheckForUpdatesOnStartup}"/>
+                                  IsChecked="{Binding Settings.Update.CheckForUpdatesOnStartup}"/>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Update Channel"/>
-                            <ComboBox SelectedItem="{Binding Settings.UpdateChannel}" 
+                            <ComboBox SelectedItem="{Binding Settings.Update.UpdateChannel}" 
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Stable</sys:String>
                                 <sys:String>Beta</sys:String>
@@ -114,17 +114,17 @@
                         Converter={StaticResource EqualsConverter}, ConverterParameter=1}"
                                 Spacing="8">
                         <CheckBox Content="Show hidden files"
-                                  IsChecked="{Binding Settings.ShowHiddenFiles}"/>
+                                  IsChecked="{Binding Settings.Explorer.ShowHiddenFiles}"/>
 
                         <CheckBox Content="Confirm before deleting files"
-                                  IsChecked="{Binding Settings.ConfirmDelete}"/>
+                                  IsChecked="{Binding Settings.Explorer.ConfirmDelete}"/>
 
                         <CheckBox Content="Double-click to open directories"
-                                  IsChecked="{Binding Settings.DoubleClickToOpen}"/>
+                                  IsChecked="{Binding Settings.Explorer.DoubleClickToOpen}"/>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Sort files by"/>
-                            <ComboBox SelectedItem="{Binding Settings.SortBy}"
+                            <ComboBox SelectedItem="{Binding Settings.Explorer.SortBy}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Name</sys:String>
                                 <sys:String>Size</sys:String>
@@ -135,7 +135,7 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Default download path"/>
-                            <TextBox Text="{Binding Settings.DefaultDownloadPath}"
+                            <TextBox Text="{Binding Settings.Explorer.DefaultDownloadPath}"
                                      Watermark="Leave empty for ~/Downloads"/>
                         </StackPanel>
                     </StackPanel>
@@ -146,7 +146,7 @@
                                 Spacing="8">
                         <StackPanel Spacing="4">
                             <TextBlock Text="Font family"/>
-                            <ComboBox SelectedItem="{Binding Settings.TerminalFontFamily}"
+                            <ComboBox SelectedItem="{Binding Settings.Terminal.TerminalFontFamily}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Consolas</sys:String>
                                 <sys:String>Cascadia Mono</sys:String>
@@ -159,13 +159,13 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Font size"/>
-                            <NumericUpDown Value="{Binding Settings.TerminalFontSize}"
+                            <NumericUpDown Value="{Binding Settings.Terminal.TerminalFontSize}"
                                            Minimum="8" Maximum="32" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Cursor style"/>
-                            <ComboBox SelectedItem="{Binding Settings.CursorStyle}"
+                            <ComboBox SelectedItem="{Binding Settings.Terminal.CursorStyle}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Bar</sys:String>
                                 <sys:String>Block</sys:String>
@@ -174,40 +174,40 @@
                         </StackPanel>
 
                         <CheckBox Content="Cursor blinking"
-                                  IsChecked="{Binding Settings.CursorBlink}"/>
+                                  IsChecked="{Binding Settings.Terminal.CursorBlink}"/>
 
                         <CheckBox Content="Enable terminal colors"
-                                  IsChecked="{Binding Settings.EnableTerminalColors}"/>
+                                  IsChecked="{Binding Settings.Terminal.EnableTerminalColors}"/>
 
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <StackPanel Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Background color"/>
-                                <TextBox Text="{Binding Settings.TerminalBackground}"
+                                <TextBox Text="{Binding Settings.Terminal.TerminalBackground}"
                                          MaxLength="7" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Foreground color"/>
-                                <TextBox Text="{Binding Settings.TerminalForeground}"
+                                <TextBox Text="{Binding Settings.Terminal.TerminalForeground}"
                                          HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Grid>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Cursor color"/>
-                            <TextBox Text="{Binding Settings.CursorColor}"
+                            <TextBox Text="{Binding Settings.Terminal.CursorColor}"
                                      HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Scrollback lines"/>
-                            <NumericUpDown Value="{Binding Settings.ScrollbackLines}"
+                            <NumericUpDown Value="{Binding Settings.Terminal.ScrollbackLines}"
                                            Minimum="1000" Maximum="100000"
                                            Increment="1000" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Terminal padding (px)"/>
-                            <NumericUpDown Value="{Binding Settings.TerminalPadding}"
+                            <NumericUpDown Value="{Binding Settings.Terminal.TerminalPadding}"
                                            Minimum="0" Maximum="32" HorizontalAlignment="Stretch"/>
                         </StackPanel>
                     </StackPanel>

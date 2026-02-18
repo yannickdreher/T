@@ -32,7 +32,7 @@ namespace T
                     DataContext = new MainWindowViewModel(),
                 };
 
-                if (SettingsService.Current.CheckForUpdatesOnStartup)
+                if (SettingsService.Current.Update.CheckForUpdatesOnStartup)
                 {
                     desktop.MainWindow.Opened += async (s, e) => await CheckForUpdatesAsync(desktop.MainWindow);
                 }
@@ -43,11 +43,11 @@ namespace T
 
         private static async Task CheckForUpdatesAsync(Window mainWindow)
         {
-            var updateInfo = await UpdateService.CheckForUpdatesAsync(SettingsService.Current.UpdateChannel);
+            var updateInfo = await UpdateService.CheckForUpdatesAsync(SettingsService.Current.Update.UpdateChannel);
 
             if (updateInfo != null)
             {
-                await UpdateDialogHelper.ShowUpdateDialogAsync(mainWindow, updateInfo, SettingsService.Current.UpdateChannel);
+                await UpdateDialogHelper.ShowUpdateDialogAsync(mainWindow, updateInfo, SettingsService.Current.Update.UpdateChannel);
             }
         }
 

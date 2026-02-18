@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using System;
 using System.ComponentModel;
 using T.Controls;
@@ -36,6 +38,7 @@ public partial class TerminalPanel : UserControl
         if (_terminal != null)
         {
             SettingsService.Current.PropertyChanged += OnSettingsChanged;
+            SettingsService.Current.Terminal.PropertyChanged += OnSettingsChanged;
             _terminal.Focus();
         }
         
@@ -45,14 +48,14 @@ public partial class TerminalPanel : UserControl
     private void ApplySettings()
     {
         if (_terminal == null) return;
-        var s = SettingsService.Current;
+        var s = SettingsService.Current.Terminal;
 
         _terminal.FontFamily = s.TerminalFont;
         _terminal.FontSize = s.TerminalFontSize;
         _terminal.DefaultBackground = s.TerminalBackgroundColor;
         _terminal.DefaultForeground = s.TerminalForegroundColor;
         _terminal.CursorColor = s.CursorColorValue;
-        _terminal.Padding = new Avalonia.Thickness(s.TerminalPadding);
+        _terminal.Padding = new Thickness(s.TerminalPadding);
         
         _terminal.CursorStyle = s.CursorStyle switch
         {
@@ -64,7 +67,7 @@ public partial class TerminalPanel : UserControl
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
-        Avalonia.Threading.Dispatcher.UIThread.Post(ApplySettings);
+        Dispatcher.UIThread.Post(ApplySettings);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

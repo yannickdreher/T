@@ -127,14 +127,14 @@ public class SshService : IDisposable
     {
         var settings = SettingsService.Current;
         var connectionInfo = CreateConnectionInfo(_session);
-        connectionInfo.Timeout = TimeSpan.FromSeconds(settings.ConnectionTimeout);
+        connectionInfo.Timeout = TimeSpan.FromSeconds(settings.General.ConnectionTimeout);
 
         _sshClient?.ErrorOccurred -= OnSshClientError;
         _sftpClient?.ErrorOccurred -= OnSftpClientError;
 
         _sshClient = new SshClient(connectionInfo);
         _sftpClient = new SftpClient(connectionInfo);
-        _sshClient.KeepAliveInterval = TimeSpan.FromSeconds(settings.KeepAliveInterval);
+        _sshClient.KeepAliveInterval = TimeSpan.FromSeconds(settings.General.KeepAliveInterval);
 
         _sshClient.ErrorOccurred += OnSshClientError;
         _sftpClient.ErrorOccurred += OnSftpClientError;
@@ -245,7 +245,7 @@ public class SshService : IDisposable
         {
             if (_outputBuffer.Length == 0)
             {
-                _outputBatchTimer.Stop(); // Optimierung: Timer stoppen wenn nichts zu tun ist
+                _outputBatchTimer.Stop();
                 return;
             }
             
