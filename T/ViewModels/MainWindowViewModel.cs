@@ -341,6 +341,25 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    // ── Unified Edit ────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task EditSelectedAsync()
+    {
+        if (_host == null || SelectedTreeNode == null) return;
+
+        if (SelectedTreeNode is FolderTreeNode)
+        {
+            await EditFolderAsync();
+        }
+        else if (SelectedTreeNode is SessionTreeNode)
+        {
+            await EditSessionAsync();
+        }
+    }
+
+    public bool CanEditSelected => SelectedTreeNode != null;
+
     // ── Unified Delete ──────────────────────────────────────────────────
 
     [RelayCommand]

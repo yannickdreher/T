@@ -58,7 +58,7 @@
 						<ui:SymbolIcon Symbol="Add"/>
 					</Button>
 					<Button Grid.Column="4"
-							Command="{Binding EditSessionCommand}"
+							Command="{Binding EditSelectedCommand}"
 							Width="38"
 							ToolTip.Tip="Edit">
 						<ui:SymbolIcon Symbol="Edit"/>
