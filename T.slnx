@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/Misc/">
+    <File Path="LICENSE" />
+    <File Path="NOTICES.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/Workflows/">
+    <File Path=".github/workflows/windows-release.yml" />
+  </Folder>
   <Project Path="T/T.csproj" />
   <Project Path="VT/VT.csproj" />
 </Solution>

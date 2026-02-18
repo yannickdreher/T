@@ -70,8 +70,7 @@ jobs:
           -s T/Assets/logo.svg `
           -o releases/ `
           --packTitle "T" `
-          --packAuthors "Yannick Dreher" `
-          --framework "net10-x64-desktop,vcredist143-x64"
+          --packAuthors "The T Project Contributors"
     
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
