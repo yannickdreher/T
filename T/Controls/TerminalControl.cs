@@ -158,6 +158,15 @@ public class TerminalControl : Control
     {
         FontSizeProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.UpdateMetrics());
         FontFamilyProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.UpdateMetrics());
+        PaddingProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.OnPaddingChanged());
+    }
+
+    private void OnPaddingChanged()
+    {
+        if (_terminal != null && Bounds.Width > 0 && Bounds.Height > 0)
+        {
+            InvalidateArrange();
+        }
     }
 
     #region Public API
@@ -246,6 +255,7 @@ public class TerminalControl : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        System.Diagnostics.Debug.WriteLine($"OnAttachedToVisualTree: Bounds={Bounds}");
         UpdateMetrics();
     }
 
@@ -256,13 +266,16 @@ public class TerminalControl : Control
     }
 
     protected override Size MeasureOverride(Size s) 
-    { 
+    {
+        System.Diagnostics.Debug.WriteLine($"MeasureOverride: availableSize={s}");
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
         return s; 
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
+        System.Diagnostics.Debug.WriteLine($"ArrangeOverride START: finalSize={finalSize}, Bounds={Bounds}, _terminal={(_terminal == null ? "null" : "exists")}");
+        
         if (finalSize.Width <= 10 || finalSize.Height <= 10) return finalSize;
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
         if (_charWidth <= 0 || _lineHeight <= 0) return finalSize;
@@ -273,6 +286,9 @@ public class TerminalControl : Control
         
         var newColumns = (uint)Math.Max(20, availableWidth / _charWidth);
         var newRows = (uint)Math.Max(5, availableHeight / _lineHeight);
+        
+        // DEBUGGING
+        System.Diagnostics.Debug.WriteLine($"ArrangeOverride: finalSize={finalSize}, charW={_charWidth:F2}, lineH={_lineHeight:F2}, cols={newColumns}, rows={newRows}, padding={padding}");
         
         bool colsChanged = newColumns != _terminalColumns;
         bool rowsChanged = newRows != _terminalRows;
@@ -286,17 +302,16 @@ public class TerminalControl : Control
             _terminal = new VirtualTerminal((int)newColumns, (int)newRows);
             _terminal.ScreenChanged += OnTerminalScreenChanged;
             
+            System.Diagnostics.Debug.WriteLine($"Terminal created: {newColumns}x{newRows}");
             TerminalResized?.Invoke(newColumns, newRows, (uint)availableWidth, (uint)availableHeight);
         }
         else if (colsChanged || rowsChanged)
         {
+            System.Diagnostics.Debug.WriteLine($"Terminal resized: {_terminalColumns}x{_terminalRows} -> {newColumns}x{newRows}");
+            
             _terminalColumns = newColumns;
             _terminalRows = newRows;
-
-            // Ensure cache matches new row count
             ResizeCache((int)newRows);
-            
-            // IMPORTANT: If dimensions change, cache content is likely invalid due to wrapping or width changes
             InvalidateAllRowCaches();
             
             _terminal.Resize((int)newColumns, (int)newRows);
@@ -342,13 +357,14 @@ public class TerminalControl : Control
 
     public override void Render(DrawingContext context)
     {
+        System.Diagnostics.Debug.WriteLine($"Render: _terminal={(_terminal == null ? "null" : $"{_terminal.Width}x{_terminal.Height}")}, Bounds={Bounds}");
+        
         if (_terminal == null) return;
 
         var defaultBg = DefaultBackground;
         var bounds = new Rect(Bounds.Size);
         var cornerRadius = CornerRadius;
 
-        // Draw global background
         var bgBrush = GetBrush(defaultBg);
         if (cornerRadius != default)
         {
@@ -375,6 +391,8 @@ public class TerminalControl : Control
         int height = terminal.Height;
         int scrollbackCount = terminal.Scrollback.Count;
         int visibleStart = Math.Max(0, scrollbackCount - _scrollOffset);
+
+        System.Diagnostics.Debug.WriteLine($"RenderContent: width={width}, height={height}, _rowCaches.Length={_rowCaches.Length}");
 
         int cursorCol = terminal.CursorColumn;
         int cursorRow = terminal.CursorRow;

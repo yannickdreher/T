@@ -73,27 +73,28 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         ];
     }
 
-    private uint _pendingColumns = 120;
-    private uint _pendingRows = 30;
-    private uint _pendingPixelWidth = 960;
-    private uint _pendingPixelHeight = 480;
-    private TaskCompletionSource<bool>? _sizeReceivedTcs;
+    // Terminal size state
+    private uint _terminalColumns = 80;
+    private uint _terminalRows = 24;
+    private uint _terminalPixelWidth = 640;
+    private uint _terminalPixelHeight = 480;
+    private bool _terminalSizeInitialized;
 
     public void SetTerminalSize(uint columns, uint rows, uint pixelWidth, uint pixelHeight)
     {
         if (columns < 20 || rows < 5) return;
 
-        _pendingColumns = columns;
-        _pendingRows = rows;
-        _pendingPixelWidth = pixelWidth;
-        _pendingPixelHeight = pixelHeight;
-        _sizeReceivedTcs?.TrySetResult(true);
+        _terminalColumns = columns;
+        _terminalRows = rows;
+        _terminalPixelWidth = pixelWidth;
+        _terminalPixelHeight = pixelHeight;
+        _terminalSizeInitialized = true;
 
         if (IsConnected)
             _sshService?.ResizeTerminal(columns, rows, pixelWidth, pixelHeight);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanConnect))]
     public async Task ConnectAsync()
     {
         if (IsConnected || IsConnecting) return;
@@ -101,14 +102,17 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         ShowOverlay = true;
         OverlayMessage = $"Connecting to {Session.Host}...";
 
-        _sizeReceivedTcs = new TaskCompletionSource<bool>();
-        await Task.WhenAny(_sizeReceivedTcs.Task, Task.Delay(500));
-
-        var columns = Math.Max(_pendingColumns, 80u);
-        var rows = Math.Max(_pendingRows, 24u);
+        if (!_terminalSizeInitialized)
+        {
+            for (int i = 0; i < 10 && !_terminalSizeInitialized; i++)
+            {
+                await Task.Delay(50);
+            }
+        }
 
         _sshService?.Dispose();
-        _sshService = new SshService(Session, columns, rows, _pendingPixelWidth, _pendingPixelHeight);
+        _sshService = new SshService(Session, _terminalColumns, _terminalRows, 
+                                      _terminalPixelWidth, _terminalPixelHeight);
 
         _sshService.CredentialsRequired += async () =>
         {
@@ -148,6 +152,10 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         {
             await _sshService.ConnectAsync();
 
+            // Ensure terminal has correct size after connection
+            _sshService.ResizeTerminal(_terminalColumns, _terminalRows, 
+                                       _terminalPixelWidth, _terminalPixelHeight);
+
             CurrentPath = _sshService.CurrentDirectory;
             await RefreshDirectoryAsync();
         }
@@ -156,11 +164,9 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             StatusMessage = $"Error: {ex.Message}";
             ShowOverlay = false;
         }
-        finally
-        {
-            _sizeReceivedTcs = null;
-        }
     }
+
+    private bool CanConnect() => !IsConnected && !IsConnecting;
 
     private async Task<SshCredentials?> ShowCredentialsDialogAsync(string? errorMessage)
     {
@@ -251,6 +257,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 ShowOverlay = false;
                 StatusMessage = $"Connected to {Session.Host}";
                 OnPropertyChanged(nameof(DisplayName));
+                ConnectCommand.NotifyCanExecuteChanged();
 
                 _ = RestoreSessionAsync();
                 break;
@@ -275,6 +282,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 ShowOverlay = false;
                 StatusMessage = "Disconnected";
                 OnPropertyChanged(nameof(DisplayName));
+                ConnectCommand.NotifyCanExecuteChanged();
                 SessionClosed?.Invoke(this);
                 break;
         }
@@ -403,8 +411,6 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         return null;
     }
 
-    private readonly Dictionary<string, string> _openTempFiles = [];
-
     [RelayCommand]
     private async Task OpenFileAsync(RemoteFile? file)
     {
@@ -413,7 +419,6 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         var tempDir = Path.Combine(Path.GetTempPath(), "T", Session.Host);
         Directory.CreateDirectory(tempDir);
 
-        // Eindeutiger Name
         var timestamp = DateTime.Now.Ticks;
         var fileName = Path.GetFileNameWithoutExtension(file.Name);
         var extension = Path.GetExtension(file.Name);
@@ -428,10 +433,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             await _sshService.DownloadFileAsync(file.FullPath, localPath);
             StatusMessage = $"Opening: {file.Name}";
 
-            // FileSystemWatcher für Auto-Upload einrichten
             SetupFileWatcher(localPath, file.FullPath, file.Name);
-
-            // Datei mit Standard-Programm öffnen
             OpenFileWithDefaultApp(localPath);
 
             StatusMessage = $"Opened: {file.Name} (auto-upload enabled)";
@@ -502,7 +504,6 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         {
             await _sshService.UploadFileAsync(localPath, remotePath);
             
-            // Remote-Verzeichnis aktualisieren falls wir gerade dort sind
             if (Path.GetDirectoryName(remotePath)?.Replace("\\", "/") == CurrentPath)
             {
                 await RefreshDirectoryAsync();

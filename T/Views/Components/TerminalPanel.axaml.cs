@@ -11,28 +11,31 @@ namespace T.Views.Components;
 
 public partial class TerminalPanel : UserControl
 {
-    private TerminalControl? _terminal;
+    private readonly TerminalControl? _terminal;
     private SessionViewModel? _currentVm;
     
     public TerminalPanel()
     {
         InitializeComponent();
+        
+        _terminal = this.FindControl<TerminalControl>("Terminal");
+        if (_terminal != null)
+        {
+            _terminal.TerminalResized += OnTerminalResized;
+            _terminal.InputReceived += OnInputReceived;
+            
+            ApplySettings();
+        }
+        
         Loaded += OnLoaded;
         GotFocus += (_, _) => _terminal?.Focus();
     }
     
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
-        _terminal = this.FindControl<TerminalControl>("Terminal");
-        
         if (_terminal != null)
         {
-            _terminal.InputReceived += OnInputReceived;
-            _terminal.TerminalResized += OnTerminalResized;
-            
-            ApplySettings();
             SettingsService.Current.PropertyChanged += OnSettingsChanged;
-            
             _terminal.Focus();
         }
         
