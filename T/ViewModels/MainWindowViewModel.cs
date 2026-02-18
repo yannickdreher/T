@@ -26,9 +26,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private ObservableCollection<SshSession> _sessions = [];
     [ObservableProperty] private SshSession? _selectedSession;
 
-    // Tree
-    [ObservableProperty] private ObservableCollection<TreeNode> _treeNodes = [];
-    [ObservableProperty] private TreeNode? _selectedTreeNode;
+    // Tree - using ITreeNode interface
+    [ObservableProperty] private ObservableCollection<ITreeNode> _treeNodes = [];
+    [ObservableProperty] private ITreeNode? _selectedTreeNode;
     [ObservableProperty] private ObservableCollection<Folder> _folders = [];
 
     // Active session tabs
@@ -80,9 +80,9 @@ public partial class MainWindowViewModel : ViewModelBase
         [
             new SshSession { Name = "Production Server", Host = "prod.example.com", Username = "admin", ConnectionStatus = ConnectionStatus.Connected, FolderId = prodFolder.Id },
             new SshSession { Name = "Backup Server", Host = "backup.internal", Username = "root", ConnectionStatus = ConnectionStatus.Connecting, FolderId = prodFolder.Id },
-            new SshSession { Name = "Development", Host = "dev.example.com", Username = "developer", FolderId = devFolder.Id },
-            new SshSession { Name = "Staging", Host = "staging.example.com", Username = "deploy", FolderId = devSubFolder.Id },
-            new SshSession { Name = "This is an extrem long name of a host", Host = "this.is.an.extrem.long.url.for.a.host.com", Username = "deploy", FolderId = devSubFolder.Id },
+            new SshSession { Name = "Development", Host = "dev.example.com", Username = "developer", ConnectionStatus = ConnectionStatus.Disconnected, FolderId = devFolder.Id },
+            new SshSession { Name = "Staging", Host = "staging.example.com", Username = "deploy", ConnectionStatus = ConnectionStatus.Disconnected, FolderId = devSubFolder.Id },
+            new SshSession { Name = "This is an extrem long name of a host", Host = "this.is.an.extrem.long.url.for.a.host.com", Username = "deploy", ConnectionStatus = ConnectionStatus.Disconnected, FolderId = devSubFolder.Id },
         ];
 
         SelectedSession = Sessions[0];
@@ -112,9 +112,9 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasOpenSessions));
     }
 
-    partial void OnSelectedTreeNodeChanged(TreeNode? value)
+    partial void OnSelectedTreeNodeChanged(ITreeNode? value)
     {
-        SelectedSession = value?.Session;
+        SelectedSession = value is SessionTreeNode sessionNode ? sessionNode.Session : null;
     }
 
     private async Task LoadAllAsync()
@@ -130,9 +130,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void BuildTree()
     {
-        var folderNodes = Folders.ToDictionary(f => f.Id, TreeNode.FromFolder);
+        var folderNodes = Folders.ToDictionary(f => f.Id, FolderTreeNode.FromFolder);
 
-        var rootNodes = new List<TreeNode>();
+        var rootNodes = new List<ITreeNode>();
         foreach (var folder in Folders)
         {
             var node = folderNodes[folder.Id];
@@ -148,7 +148,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         foreach (var session in Sessions)
         {
-            var hostNode = TreeNode.FromSession(session);
+            var hostNode = SessionTreeNode.FromSession(session);
             if (session.FolderId != null && folderNodes.TryGetValue(session.FolderId, out var folderNode))
             {
                 folderNode.Children.Add(hostNode);
@@ -159,7 +159,7 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        TreeNodes = new ObservableCollection<TreeNode>(rootNodes);
+        TreeNodes = new ObservableCollection<ITreeNode>(rootNodes);
 
         foreach (var node in TreeNodes)
         {
@@ -167,12 +167,12 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private void HookFolderExpansion(TreeNode node)
+    private void HookFolderExpansion(ITreeNode node)
     {
-        if (node.IsFolder)
+        if (node is FolderTreeNode folderNode)
         {
-            node.PropertyChanged -= OnTreeNodePropertyChanged;
-            node.PropertyChanged += OnTreeNodePropertyChanged;
+            folderNode.PropertyChanged -= OnTreeNodePropertyChanged;
+            folderNode.PropertyChanged += OnTreeNodePropertyChanged;
         }
 
         foreach (var child in node.Children)
@@ -183,8 +183,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async void OnTreeNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(TreeNode.IsExpanded)) return;
-        if (sender is not TreeNode { IsFolder: true, Folder: not null } node) return;
+        if (e.PropertyName != nameof(ITreeNode.IsExpanded)) return;
+        if (sender is not FolderTreeNode { Folder: not null } node) return;
 
         node.Folder.IsExpanded = node.IsExpanded;
         await _storageService.UpdateFolderAsync(node.Folder);
@@ -209,15 +209,16 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private static IEnumerable<TreeNode> EnumerateFolderNodes(IEnumerable<TreeNode> nodes)
+    private static IEnumerable<FolderTreeNode> EnumerateFolderNodes(IEnumerable<ITreeNode> nodes)
     {
         foreach (var node in nodes)
         {
-            if (node.IsFolder)
-                yield return node;
-
-            foreach (var child in EnumerateFolderNodes(node.Children))
-                yield return child;
+            if (node is FolderTreeNode folderNode)
+            {
+                yield return folderNode;
+                foreach (var child in EnumerateFolderNodes(folderNode.Children))
+                    yield return child;
+            }
         }
     }
 
@@ -230,9 +231,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var session = new SshSession
         {
-            FolderId = SelectedTreeNode?.IsFolder == true
-                ? SelectedTreeNode.Folder?.Id
-                : SelectedTreeNode?.Session?.FolderId
+            FolderId = SelectedTreeNode switch
+            {
+                FolderTreeNode folderNode => folderNode.Folder.Id,
+                SessionTreeNode sessionNode => sessionNode.Session.FolderId,
+                _ => null
+            }
         };
 
         var content = new SessionEditorDialog { DataContext = session };
@@ -304,7 +308,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var folder = new Folder
         {
-            ParentId = SelectedTreeNode?.IsFolder == true ? SelectedTreeNode.Folder?.Id : null
+            ParentId = SelectedTreeNode is FolderTreeNode folderNode ? folderNode.Folder.Id : null
         };
 
         var content = new FolderEditorDialog { DataContext = folder };
@@ -330,9 +334,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task EditFolderAsync()
     {
-        if (_host == null || SelectedTreeNode is not { IsFolder: true, Folder: not null }) return;
+        if (_host == null || SelectedTreeNode is not FolderTreeNode { Folder: not null } selectedFolder) return;
 
-        var folder = SelectedTreeNode.Folder;
+        var folder = selectedFolder.Folder;
         var content = new FolderEditorDialog { DataContext = folder };
         var dialog = new ContentDialog
         {
@@ -359,16 +363,16 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (_host == null || SelectedTreeNode == null) return;
 
-        if (SelectedTreeNode.IsFolder && SelectedTreeNode.Folder != null)
+        if (SelectedTreeNode is FolderTreeNode { Folder: not null } folderTreeNode)
         {
             var confirmed = await DialogService.ConfirmAsync(
                 _host,
                 "Delete Folder",
-                $"Delete folder \"{SelectedTreeNode.Name}\" and all its contents?");
+                $"Delete folder \"{folderTreeNode.Name}\" and all its contents?");
 
             if (!confirmed) return;
 
-            var folderId = SelectedTreeNode.Folder.Id;
+            var folderId = folderTreeNode.Folder.Id;
             var folderIds = GetAllChildFolderIds(folderId);
             folderIds.Add(folderId);
 
@@ -381,8 +385,9 @@ public partial class MainWindowViewModel : ViewModelBase
             await _storageService.DeleteFolderAsync(folderId);
             await LoadAllAsync();
         }
-        else if (SelectedTreeNode.Session is { } session)
+        else if (SelectedTreeNode is SessionTreeNode { Session: not null } sessionTreeNode)
         {
+            var session = sessionTreeNode.Session;
             var confirmed = await DialogService.ConfirmAsync(
                 _host,
                 "Delete Session",
@@ -526,33 +531,33 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task MoveNodeAsync(object? parameter)
     {
-        if (parameter is not (TreeNode dragged, TreeNode target)) return;
+        if (parameter is not (ITreeNode dragged, ITreeNode target)) return;
 
-        if (dragged.IsFolder && target != null && IsDescendantOf(target, dragged))
+        if (dragged is FolderTreeNode && target != null && IsDescendantOf(target, dragged))
             return;
 
         var targetFolderId = target switch
         {
-            { IsFolder: true } => target.Folder?.Id,
-            { IsFolder: false } => target.Session?.FolderId,
+            FolderTreeNode folderNode => folderNode.Folder?.Id,
+            SessionTreeNode sessionNode => sessionNode.Session?.FolderId,
             _ => null
         };
 
-        if (dragged.IsFolder && dragged.Folder != null)
+        if (dragged is FolderTreeNode { Folder: not null } draggedFolder)
         {
-            dragged.Folder.ParentId = targetFolderId;
-            await _storageService.UpdateFolderAsync(dragged.Folder);
+            draggedFolder.Folder.ParentId = targetFolderId;
+            await _storageService.UpdateFolderAsync(draggedFolder.Folder);
         }
-        else if (dragged.Session != null)
+        else if (dragged is SessionTreeNode { Session: not null } draggedSession)
         {
-            dragged.Session.FolderId = targetFolderId;
-            await _storageService.UpdateSessionAsync(dragged.Session);
+            draggedSession.Session.FolderId = targetFolderId;
+            await _storageService.UpdateSessionAsync(draggedSession.Session);
         }
 
         BuildTree();
     }
 
-    public static bool IsDescendantOf(TreeNode node, TreeNode potentialAncestor)
+    public static bool IsDescendantOf(ITreeNode node, ITreeNode potentialAncestor)
     {
         if (node == potentialAncestor) return true;
 

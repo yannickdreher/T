@@ -3,6 +3,7 @@
 			 xmlns:vm="using:T.ViewModels"
 			 xmlns:models="using:T.Models"
 			 xmlns:converters="using:T.Converters"
+			 xmlns:selectors="using:T.Selectors"
 			 xmlns:ui="using:FluentAvalonia.UI.Controls"
 			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
 			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -81,30 +82,34 @@
 					  ContainerClearing="OnTreeViewContainerClearing"
 					  HorizontalAlignment="Stretch">
 
-				<TreeView.ItemTemplate>
-					<TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:TreeNode">
+				<TreeView.DataTemplates>
+					<!-- Folder Template -->
+					<DataTemplate DataType="models:FolderTreeNode">
 						<Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
 							  DragDrop.AllowDrop="True">
-							<!-- Folder Icon -->
-							<ui:SymbolIcon Grid.Column="0" Symbol="Folder"
-										   IsVisible="{Binding IsFolder}"
-										   VerticalAlignment="Center"/>
-
-							<!-- Status Indicator für Sessions mit Converter -->
-							<Ellipse Grid.Column="0"
-								     Width="8"
-								     Height="8"
-								     VerticalAlignment="Center"
-								     Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"
-								     IsVisible="{Binding !IsFolder}"/>
-
-							<TextBlock Grid.Column="1"
-									   Text="{Binding Name}"
-									   TextTrimming="CharacterEllipsis"
-									   MaxWidth="180"
-									   TextAlignment="Left"
-									   HorizontalAlignment="Left"/>
+							<ui:SymbolIcon Grid.Column="0" Symbol="Folder" VerticalAlignment="Center"/>
+							<TextBlock Grid.Column="1" Text="{Binding Name}" 
+									   TextTrimming="CharacterEllipsis" MaxWidth="180"
+									   TextAlignment="Left" HorizontalAlignment="Left"/>
 						</Grid>
+					</DataTemplate>
+					
+					<!-- Session Template -->
+					<DataTemplate DataType="models:SessionTreeNode">
+						<Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+							  DragDrop.AllowDrop="False">
+							<Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+									 Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"/>
+							<TextBlock Grid.Column="1" Text="{Binding Name}" 
+									   TextTrimming="CharacterEllipsis" MaxWidth="180"
+									   TextAlignment="Left" HorizontalAlignment="Left"/>
+						</Grid>
+					</DataTemplate>
+				</TreeView.DataTemplates>
+
+				<TreeView.ItemTemplate>
+					<TreeDataTemplate ItemsSource="{Binding Children}">
+						<ContentControl Content="{Binding}"/>
 					</TreeDataTemplate>
 				</TreeView.ItemTemplate>
 			</TreeView>

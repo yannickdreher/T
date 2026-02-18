@@ -12,7 +12,7 @@ namespace T.Views.Components;
 
 public partial class SessionsPanel : UserControl
 {
-    private TreeNode? _draggedNode;
+    private ITreeNode? _draggedNode;
     private TreeViewItem? _draggedItem;
     private TreeViewItem? _lastDropTarget;
     private Point _dragStartPoint;
@@ -48,9 +48,11 @@ public partial class SessionsPanel : UserControl
 
     private MainWindowViewModel? Vm => DataContext as MainWindowViewModel;
 
-    private void OnSessionDoubleTapped(object? sender, TappedEventArgs e)
+    private async void OnSessionDoubleTapped(object? sender, TappedEventArgs e)
     {
-        Vm?.ConnectCommand.Execute(null);
+        if (DataContext is not MainWindowViewModel vm) return;
+        if (vm.SelectedTreeNode is SessionTreeNode)
+            await vm.ConnectCommand.ExecuteAsync(null);
     }
 
     private void OnEmptyAreaPressed(object? sender, PointerPressedEventArgs e)
@@ -62,7 +64,7 @@ public partial class SessionsPanel : UserControl
 
     private void OnTreeViewContainerPrepared(object? sender, ContainerPreparedEventArgs e)
     {
-        if (e.Container is TreeViewItem item && item.DataContext is TreeNode node)
+        if (e.Container is TreeViewItem item && item.DataContext is ITreeNode node)
         {
             item.Expanded -= OnTreeViewItemExpanded;
             item.Collapsed -= OnTreeViewItemCollapsed;
@@ -101,7 +103,7 @@ public partial class SessionsPanel : UserControl
         if (point.Properties.IsLeftButtonPressed)
         {
             var item = FindTreeViewItem(e.Source as Control);
-            if (item is { DataContext: TreeNode node })
+            if (item is { DataContext: ITreeNode node })
             {
                 _draggedNode = node;
                 _draggedItem = item;
@@ -148,7 +150,7 @@ public partial class SessionsPanel : UserControl
         if (Vm is null) return;
 
         var item = FindTreeViewItem(e.Source as Control);
-        if (item is not { DataContext: TreeNode node }) return;
+        if (item is not { DataContext: ITreeNode node }) return;
 
         e.Handled = true;
         Vm.SelectedTreeNode = node;
@@ -185,7 +187,7 @@ public partial class SessionsPanel : UserControl
         }
 
         var targetItem = FindTreeViewItem(e.Source as Control);
-        var targetNode = targetItem?.DataContext as TreeNode;
+        var targetNode = targetItem?.DataContext as ITreeNode;
 
         if (targetNode == _draggedNode ||
             (_draggedNode.IsFolder && targetNode != null && MainWindowViewModel.IsDescendantOf(targetNode, _draggedNode)))
@@ -217,7 +219,7 @@ public partial class SessionsPanel : UserControl
         if (Vm is null || _draggedNode is null) return;
 
         var targetItem = FindTreeViewItem(e.Source as Control);
-        TreeNode? target = targetItem?.DataContext as TreeNode;
+        ITreeNode? target = targetItem?.DataContext as ITreeNode;
 
         if (target == _draggedNode) return;
 
@@ -249,8 +251,7 @@ public partial class SessionsPanel : UserControl
 
     private void OnTreeViewItemExpanded(object? sender, RoutedEventArgs e)
     {
-
-        if (sender is TreeViewItem { DataContext: TreeNode node })
+        if (sender is TreeViewItem { DataContext: ITreeNode node })
         {
             node.IsExpanded = true;
             e.Handled = true;
@@ -259,7 +260,7 @@ public partial class SessionsPanel : UserControl
 
     private void OnTreeViewItemCollapsed(object? sender, RoutedEventArgs e)
     {
-        if (sender is TreeViewItem { DataContext: TreeNode node })
+        if (sender is TreeViewItem { DataContext: ITreeNode node })
         {
             node.IsExpanded = false;
             e.Handled = true;

@@ -12,7 +12,6 @@ public partial class SessionView : UserControl
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        System.Diagnostics.Debug.WriteLine($"SessionView.ArrangeOverride: finalSize={finalSize}");
         return base.ArrangeOverride(finalSize);
     }
 }
