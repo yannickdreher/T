@@ -41,8 +41,10 @@ public class SshService : IDisposable
     public event Func<Task<SshCredentials?>>? CredentialsRequired;
     public event Func<string, Task<SshCredentials?>>? AuthenticationFailed;
     public event Func<HostKeyInfo, Task<bool>>? HostKeyVerificationRequired;
+    public event Action<string>? SftpStatusChanged;
 
     public bool IsConnected => _sshClient?.IsConnected ?? false;
+    public bool IsSftpAvailable => _sftpClient?.IsConnected ?? false;
     public string CurrentDirectory => _sftpClient?.WorkingDirectory ?? "/";
 
     public SshService(SshSession session, uint columns = 120, uint rows = 30, uint pixelWidth = 960, uint pixelHeight = 480)
@@ -63,16 +65,15 @@ public class SshService : IDisposable
         cancellationToken = cancellationToken == default ? _cts.Token : CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken).Token;
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrEmpty(_session.Username) || 
-            (string.IsNullOrEmpty(_session.Password) && string.IsNullOrEmpty(_session.PrivateKeyPath)))
+        if (string.IsNullOrWhiteSpace(_session.Username))
         {
             if (CredentialsRequired == null)
             {
-                throw new InvalidOperationException("Credentials are required but no CredentialsRequired handler is registered.");
+                throw new InvalidOperationException("Username is required but no CredentialsRequired handler is registered.");
             }
 
             var credentials = await CredentialsRequired.Invoke();
-            if (credentials == null)
+            if (credentials == null || string.IsNullOrWhiteSpace(credentials.Username))
             {
                 StatusChanged?.Invoke(ConnectionStatus.Disconnected);
                 return;
@@ -185,8 +186,8 @@ public class SshService : IDisposable
         {
             StatusChanged?.Invoke(ConnectionStatus.Connecting);
 
+            // SSH Verbindung (Terminal) - essentiell
             await _sshClient.ConnectAsync(cancellationToken);
-            await _sftpClient.ConnectAsync(cancellationToken);
 
             _shellStream?.Closed -= OnShellStreamClosed;
             _shellStream?.ErrorOccurred -= OnShellStreamError;
@@ -208,10 +209,29 @@ public class SshService : IDisposable
             _shellStream.DataReceived += OnShellStreamDataRecived;
 
             StatusChanged?.Invoke(ConnectionStatus.Connected);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    SftpStatusChanged?.Invoke("Connecting to SFTP...");
+                    await _sftpClient.ConnectAsync(cancellationToken);
+                    SftpStatusChanged?.Invoke("SFTP available");
+                }
+                catch (SshException ex)
+                {
+                    SftpStatusChanged?.Invoke($"SFTP not available: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    SftpStatusChanged?.Invoke($"SFTP not available: {ex.Message}");
+                }
+            }, cancellationToken);
         }
         catch (OperationCanceledException)
         {
             ShellDataReceived?.Invoke("\r\n\u26A0 Connection attempt canceled.\r\n");
+            throw;
         }
     }
 
@@ -245,6 +265,12 @@ public class SshService : IDisposable
 
     private void OnHostKeyReceived(object? sender, HostKeyEventArgs e)
     {
+        if (KnownHostsService.IsHostKeyKnown(_session.Host, _session.Port, e.HostKey))
+        {
+            e.CanTrust = true;
+            return;
+        }
+
         if (HostKeyVerificationRequired != null)
         {
             var hostKeyInfo = new HostKeyInfo
@@ -256,11 +282,17 @@ public class SshService : IDisposable
                 FingerprintMD5 = e.FingerPrintMD5
             };
 
-            e.CanTrust = HostKeyVerificationRequired.Invoke(hostKeyInfo).GetAwaiter().GetResult();
+            var trusted = HostKeyVerificationRequired.Invoke(hostKeyInfo).GetAwaiter().GetResult();
+            e.CanTrust = trusted;
+
+            if (trusted)
+            {
+                KnownHostsService.AddHostKey(_session.Host, _session.Port, e.HostKeyName, e.HostKey);
+            }
         }
         else
         {
-            e.CanTrust = true;
+            e.CanTrust = false;
         }
     }
 
@@ -508,7 +540,12 @@ public class SshService : IDisposable
 
     private static ConnectionInfo CreateConnectionInfo(SshSession session)
     {
+        var username = string.IsNullOrWhiteSpace(session.Username) 
+            ? "anonymous" 
+            : session.Username;
+
         var authMethods = new List<AuthenticationMethod>();
+        
         if (!string.IsNullOrEmpty(session.PrivateKeyPath) && File.Exists(session.PrivateKeyPath))
         {
             try
@@ -524,7 +561,7 @@ public class SshService : IDisposable
                     keyFile = new PrivateKeyFile(session.PrivateKeyPath);
                 }
                 
-                authMethods.Add(new PrivateKeyAuthenticationMethod(session.Username, keyFile));
+                authMethods.Add(new PrivateKeyAuthenticationMethod(username, keyFile));
             }
             catch (Exception ex)
             {
@@ -534,15 +571,13 @@ public class SshService : IDisposable
 
         if (!string.IsNullOrEmpty(session.Password))
         {
-            authMethods.Add(new PasswordAuthenticationMethod(session.Username, session.Password));
+            authMethods.Add(new PasswordAuthenticationMethod(username, session.Password));
         }
 
-        if (authMethods.Count == 0)
-        {
-            throw new InvalidOperationException("No authentication method available. Please provide password or private key.");
-        }
+        authMethods.Add(new KeyboardInteractiveAuthenticationMethod(username));
+        authMethods.Add(new NoneAuthenticationMethod(username));
 
-        return new ConnectionInfo(session.Host, session.Port, session.Username, [.. authMethods]);
+        return new ConnectionInfo(session.Host, session.Port, username, [.. authMethods]);
     }
 
     private static string GetPermissionsString(SftpFileAttributes attrs)

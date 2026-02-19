@@ -13,7 +13,7 @@
 		<vm:SessionViewModel/>
 	</Design.DataContext>
 
-	<Grid RowDefinitions="Auto,Auto,*" RowSpacing="5" ColumnSpacing="5">
+	<Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="5" ColumnSpacing="5">
 		<TextBox Text="{Binding CurrentPath}" IsReadOnly="True"/>
 
 		<Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="5" HorizontalAlignment="Stretch">
@@ -39,7 +39,14 @@
 			</Button>
 		</Grid>
 
-		<Border Grid.Row="2"
+		<!-- Status InfoBar -->
+		<ui:InfoBar Grid.Row="2"
+					IsOpen="{Binding !IsConnected}"
+					IsClosable="False"
+					Severity="Informational"
+					Message="{Binding FileExplorerStatus}"/>
+
+		<Border Grid.Row="3"
 				CornerRadius="6"
 				ClipToBounds="True"
 				BorderThickness="1"

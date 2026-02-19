@@ -90,11 +90,7 @@ public static class KnownHostsService
                 
                 using var stream = new FileStream(KnownHostsPath, FileMode.Append, FileAccess.Write, FileShare.None);
                 using var writer = new StreamWriter(stream, Encoding.UTF8);
-                
-                if (needsNewline)
-                {
-                    writer.WriteLine();
-                }
+
                 writer.WriteLine(line);
             }
 

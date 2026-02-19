@@ -1,26 +1,17 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:T.ViewModels"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
              x:Class="T.Views.HostKeyDialog"
              x:DataType="vm:HostKeyDialogViewModel">
 
-    <StackPanel Spacing="16" MinWidth="500">
-        <!-- Warning Icon and Message -->
-        <Border Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
-            <StackPanel Spacing="8">
-                <TextBlock Text="⚠️ Host Key Verification"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
-                <TextBlock TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                    The authenticity of the host cannot be established.
-                    This might be the first time you connect to this server, or the server's key has changed.
-                </TextBlock>
-            </StackPanel>
-        </Border>
+    <StackPanel Spacing="16">
+        <!-- Warning InfoBar -->
+        <ui:InfoBar Severity="Warning"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Title="Host Key Verification"
+                    Message="The authenticity of the host cannot be established. This might be the first time you connect to this server, or the server's key has changed."/>
 
         <!-- Host Information -->
         <StackPanel Spacing="8">
@@ -75,42 +66,17 @@
             </Grid>
         </StackPanel>
 
-        <!-- Security Notice -->
-        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-            <StackPanel Spacing="8">
-                <TextBlock Text="🔒 Security Notice"
-                           FontWeight="SemiBold"
-                           FontSize="13"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                <TextBlock TextWrapping="Wrap"
-                           FontSize="12"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                    Please verify this fingerprint matches the one provided by your server administrator.
-                    If you're unsure, contact your administrator before continuing.
-                </TextBlock>
-            </StackPanel>
-        </Border>
+        <!-- Security Notice InfoBar -->
+        <ui:InfoBar Severity="Informational"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Title="Security Notice"
+                    Message="Please verify this fingerprint matches the one provided by your server administrator. If you're unsure, contact your administrator before continuing."/>
 
-        <!-- Auto-save Notice -->
-        <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
-                Opacity="0.1"
-                CornerRadius="6"
-                Padding="12">
-            <StackPanel Spacing="4" Orientation="Horizontal">
-                <TextBlock Text="ℹ️"
-                           FontSize="14"
-                           VerticalAlignment="Center"/>
-                <TextBlock TextWrapping="Wrap"
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                    If you accept, this key will be automatically saved to ~/.ssh/known_hosts
-                </TextBlock>
-            </StackPanel>
-        </Border>
+        <!-- Auto-save Notice InfoBar -->
+        <ui:InfoBar Severity="Informational"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Message="If you accept, this key will be automatically saved to ~/.ssh/known_hosts"/>
     </StackPanel>
 </UserControl>

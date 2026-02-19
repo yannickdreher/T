@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
+using Renci.SshNet.Common;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -40,6 +41,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _transferEta = "";
     [ObservableProperty] private string _transferDirection = "";
     [ObservableProperty] private bool _isActive;
+    [ObservableProperty] private string _fileExplorerStatus = "Not connected";
 
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
@@ -126,6 +128,18 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             return await ShowHostKeyDialogAsync(hostKeyInfo);
         };
 
+        _sshService.SftpStatusChanged += message =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                FileExplorerStatus = message;
+                if (!message.Contains("available"))
+                {
+                    RemoteFiles.Clear();
+                }
+            });
+        };
+
         _sshService.ShellDataReceived += output =>
             Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(output));
 
@@ -156,17 +170,55 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
             _sshService.ResizeTerminal(_terminalColumns, _terminalRows, _terminalPixelWidth, _terminalPixelHeight);
 
-            CurrentPath = _sshService.CurrentDirectory;
-            await RefreshDirectoryAsync();
+            // Nur Directory laden wenn SFTP verfügbar ist
+            if (_sshService.IsSftpAvailable)
+            {
+                CurrentPath = _sshService.CurrentDirectory;
+                await RefreshDirectoryAsync();
+            }
+        }
+        catch (SshConnectionException ex)
+        {
+            ShowOverlay = false;
+            StatusMessage = $"Connection failed: {ex.Message}";
+            OutputReceived?.Invoke($"\r\n\x1b[31m✗ Connection failed\x1b[0m\r\n{ex.Message}\r\n");
+            FileExplorerStatus = "Not connected";
+            RemoteFiles.Clear();
+        }
+        catch (SshAuthenticationException ex)
+        {
+            ShowOverlay = false;
+            StatusMessage = $"Authentication failed";
+            OutputReceived?.Invoke($"\r\n\x1b[31m✗ Authentication failed\x1b[0m\r\n{ex.Message}\r\n");
+            FileExplorerStatus = "Not connected";
+            RemoteFiles.Clear();
+        }
+        catch (OperationCanceledException)
+        {
+            ShowOverlay = false;
+            StatusMessage = "Connection canceled";
+            OutputReceived?.Invoke("\r\n\x1b[33m⚠ Connection canceled by user\x1b[0m\r\n");
+            FileExplorerStatus = "Not connected";
+            RemoteFiles.Clear();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error: {ex.Message}";
             ShowOverlay = false;
+            StatusMessage = $"Error: {ex.Message}";
+            OutputReceived?.Invoke($"\r\n\x1b[31m✗ Connection error\x1b[0m\r\n{ex.Message}\r\n");
+            FileExplorerStatus = "Not connected";
+            RemoteFiles.Clear();
+        }
+        finally
+        {
+            if (!IsConnecting && ShowOverlay)
+            {
+                ShowOverlay = false;
+            }
         }
     }
 
-    private static async Task<bool> ShowHostKeyDialogAsync(HostKeyInfo hostKeyInfo)
+    private async Task<bool> ShowHostKeyDialogAsync(HostKeyInfo hostKeyInfo)
     {
         bool accepted = false;
 
@@ -193,6 +245,12 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
             var result = await dialog.ShowAsync(mainWindow);
             accepted = result == ContentDialogResult.Primary;
+            
+            if (!accepted)
+            {
+                StatusMessage = "Connection rejected by user";
+                OutputReceived?.Invoke($"\r\n\x1b[33m⚠ Host key verification failed\x1b[0m\r\nConnection rejected by user.\r\n");
+            }
         });
 
         return accepted;
@@ -280,6 +338,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 ShowOverlay = true;
                 StatusMessage = $"Connecting to {Session.Host}...";
                 OverlayMessage = $"Connecting to {Session.Host}...";
+                FileExplorerStatus = "Connecting...";
                 break;
 
             case ConnectionStatus.Connected:
@@ -296,6 +355,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
             case ConnectionStatus.Disconnecting:
                 StatusMessage = "Disconnecting...";
+                FileExplorerStatus = "Disconnecting...";
                 break;
 
             case ConnectionStatus.Reconnecting:
@@ -304,6 +364,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 ShowOverlay = true;
                 OverlayMessage = $"Connection lost.\nReconnecting to {Session.Host}...";
                 StatusMessage = "Reconnecting...";
+                FileExplorerStatus = "Reconnecting...";
                 OnPropertyChanged(nameof(DisplayName));
                 break;
 
@@ -313,6 +374,8 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 IsConnected = false;
                 ShowOverlay = false;
                 StatusMessage = "Disconnected";
+                FileExplorerStatus = "Not connected - Click 'Connect' to establish a connection";
+                RemoteFiles.Clear();
                 OnPropertyChanged(nameof(DisplayName));
                 ConnectCommand.NotifyCanExecuteChanged();
                 SessionClosed?.Invoke(this);
@@ -322,7 +385,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     private async Task RestoreSessionAsync()
     {
-        if (_sshService == null) return;
+        if (_sshService == null || !_sshService.IsSftpAvailable) return;
 
         try
         {
@@ -339,19 +402,28 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task RefreshDirectoryAsync()
     {
-        if (_sshService == null) return;
+        if (_sshService == null || !_sshService.IsSftpAvailable)
+        {
+            FileExplorerStatus = "SFTP not available on this server";
+            return;
+        }
+
         try
         {
             var files = await _sshService.ListDirectoryAsync(CurrentPath);
             RemoteFiles = new ObservableCollection<RemoteFile>(files);
         }
-        catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+            FileExplorerStatus = $"Error: {ex.Message}";
+        }
     }
 
     [RelayCommand]
     public async Task NavigateToAsync(RemoteFile? file)
     {
-        if (file == null || _sshService == null) return;
+        if (file == null || _sshService == null || !_sshService.IsSftpAvailable) return;
         if (file.IsDirectory)
         {
             CurrentPath = file.Name == ".."
@@ -364,7 +436,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task DownloadFileAsync()
     {
-        if (SelectedFile == null || SelectedFile.IsDirectory || _sshService == null) return;
+        if (SelectedFile == null || SelectedFile.IsDirectory || _sshService == null || !_sshService.IsSftpAvailable) return;
         var localPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "Downloads", SelectedFile.Name);
@@ -384,7 +456,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task UploadFileAsync(string? localPath)
     {
-        if (string.IsNullOrEmpty(localPath) || _sshService == null) return;
+        if (string.IsNullOrEmpty(localPath) || _sshService == null || !_sshService.IsSftpAvailable) return;
         var fileName = Path.GetFileName(localPath);
         var remotePath = $"{CurrentPath.TrimEnd('/')}/{fileName}";
 
@@ -404,7 +476,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task DeleteFileAsync()
     {
-        if (SelectedFile == null || _sshService == null) return;
+        if (SelectedFile == null || _sshService == null || !_sshService.IsSftpAvailable) return;
         
         var deletedFileName = SelectedFile.Name;
         
@@ -419,7 +491,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     public async Task ChangePermissionsAsync(short permissions)
     {
-        if (SelectedFile == null || _sshService == null) return;
+        if (SelectedFile == null || _sshService == null || !_sshService.IsSftpAvailable) return;
         
         var fileName = SelectedFile.Name;
         
@@ -432,7 +504,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         catch (Exception ex) { StatusMessage = $"Change permissions failed: {ex.Message}"; }
     }
 
-    public void SendTerminalInput(string text) => _sshService?.SendInput(text);
+    public void SendTerminalInput(string text = "") => _sshService?.SendInput(text);
 
     private static Window? GetMainWindow()
     {
@@ -446,7 +518,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task OpenFileAsync(RemoteFile? file)
     {
-        if (file == null || file.IsDirectory || _sshService == null) return;
+        if (file == null || file.IsDirectory || _sshService == null || !_sshService.IsSftpAvailable) return;
 
         var tempDir = Path.Combine(Path.GetTempPath(), "T", Session.Host);
         Directory.CreateDirectory(tempDir);
@@ -523,7 +595,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     private async Task AutoUploadFileAsync(string localPath, string remotePath, string displayName)
     {
-        if (_sshService == null || !File.Exists(localPath))
+        if (_sshService == null || !File.Exists(localPath) || !_sshService.IsSftpAvailable)
             return;
 
         await Task.Delay(100);

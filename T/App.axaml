@@ -58,11 +58,11 @@
 		</Style>
 
 		<Style Selector="DataGridRow:pointerover">
-			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}"/>
 		</Style>
 
 		<Style Selector="DataGridRow:selected">
-			<Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
 		</Style>
 	</Application.Styles>
 </Application>
