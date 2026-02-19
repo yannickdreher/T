@@ -9,7 +9,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Threading;
 using VT;
+using T.ViewModels;
+using T.Services;
 
 namespace T.Controls;
 
@@ -25,10 +28,28 @@ public class TerminalControl : Control
     private readonly DispatcherTimer _cursorBlinkTimer;
     private readonly StringBuilder _textRunBuilder = new(512);
 
+    // Input buffering / throttling to prevent infinite-stream (e.g. "yes") from starving UI
+    private readonly StringBuilder _incomingBuffer = new(16 * 1024);
+    private readonly Lock _incomingLock = new();
+    private readonly DispatcherTimer _inputTimer;
+    private const int InputProcessIntervalMs = 16; // how often we process incoming data (ms)
+    private const int InputProcessMaxChars = 4096; // max chars processed per tick
+    private const int MaxInputBufferSize = 200_000; // safety: trim buffer when exceeding this
+    private const int TrimToSize = 100_000; // when trimming, keep last N chars
+
+    // Render coalescing
+    private readonly DispatcherTimer _renderTimer;
+    private int _pendingDirtyTop = int.MaxValue;
+    private int _pendingDirtyBottom = int.MinValue;
+    private const int RenderCoalesceMs = 16; // ~60 FPS cap for bursts
+
+    // FormattedText cache (reduces GC pressure)
+    private readonly FormattedTextCache _formattedTextCache = new(1024);
+
     private class RowRenderCache
     {
-        public readonly List<(double X, FormattedText Text, bool Underline, Color Foreground)> TextRuns = [];
-        public readonly List<(Rect Rect, Brush Brush)> Backgrounds = [];
+        public readonly List<(double X, FormattedText Text, bool Underline, Color Foreground)> TextRuns = new();
+        public readonly List<(Rect Rect, Brush Brush)> Backgrounds = new();
         public bool IsDirty = true;
 
         public void Clear()
@@ -38,7 +59,7 @@ public class TerminalControl : Control
             IsDirty = true;
         }
     }
-    
+
     private RowRenderCache[] _rowCaches = [];
 
     private bool _isSelecting;
@@ -51,8 +72,8 @@ public class TerminalControl : Control
     private uint _terminalRows;
 
     private readonly Dictionary<Color, SolidColorBrush> _brushCache = [];
-    private Typeface _cachedTypeface;
-    private Typeface _cachedBoldTypeface;
+    private Typeface _cachedTypeface = new();
+    private Typeface _cachedBoldTypeface = new();
 
     #region Styled Properties
 
@@ -82,6 +103,9 @@ public class TerminalControl : Control
 
     public static readonly StyledProperty<TerminalCursorStyle> CursorStyleProperty =
         AvaloniaProperty.Register<TerminalControl, TerminalCursorStyle>(nameof(CursorStyle), TerminalCursorStyle.Bar);
+
+    public static readonly StyledProperty<bool> ShowStatsOverlayProperty =
+        AvaloniaProperty.Register<TerminalControl, bool>(nameof(ShowStatsOverlay), true);
 
     public FontFamily FontFamily
     {
@@ -131,6 +155,12 @@ public class TerminalControl : Control
         set => SetValue(CursorStyleProperty, value);
     }
 
+    public bool ShowStatsOverlay
+    {
+        get => GetValue(ShowStatsOverlayProperty);
+        set => SetValue(ShowStatsOverlayProperty, value);
+    }
+
     #endregion
 
     public event Action<uint, uint, uint, uint>? TerminalResized;
@@ -143,10 +173,22 @@ public class TerminalControl : Control
         ClipToBounds = true;
 
         _cursorBlinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(530) };
-        _cursorBlinkTimer.Tick += (_, _) => 
-        { 
+        _cursorBlinkTimer.Tick += (_, _) =>
+        {
             _cursorBlink = !_cursorBlink;
             InvalidateVisual();
+        };
+
+        // Input processing timer - processes buffered incoming text in chunks
+        _inputTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(InputProcessIntervalMs) };
+        _inputTimer.Tick += (_, _) => ProcessInputBuffer();
+
+        // Render coalescing timer: collect small updates and render once per interval
+        _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(RenderCoalesceMs) };
+        _renderTimer.Tick += (_, _) =>
+        {
+            _renderTimer.Stop();
+            ProcessPendingChanges();
         };
     }
 
@@ -167,19 +209,84 @@ public class TerminalControl : Control
 
     #region Public API
 
+    // AppendOutput now buffers incoming text; heavy streams are throttled
     public void AppendOutput(string text)
     {
-        if (_terminal == null) return;
-        
-        bool wasBottom = _scrollOffset == 0;
-        _terminal.Feed(text);
-        
-        if (wasBottom && _scrollOffset != 0) 
+        if (string.IsNullOrEmpty(text)) return;
+
+        lock (_incomingLock)
         {
-            _scrollOffset = 0;
-            InvalidateAllRowCaches();
+            // safety trim: keep buffer bounded to avoid OOM with infinite producers
+            if (_incomingBuffer.Length + text.Length > MaxInputBufferSize)
+            {
+                // keep the last TrimToSize chars
+                if (_incomingBuffer.Length > TrimToSize)
+                {
+                    _incomingBuffer.Remove(0, _incomingBuffer.Length - TrimToSize);
+                }
+                // if still too big, drop oldest to make room
+                if (_incomingBuffer.Length + text.Length > MaxInputBufferSize)
+                {
+                    int toDrop = (_incomingBuffer.Length + text.Length) - MaxInputBufferSize;
+                    if (toDrop >= _incomingBuffer.Length)
+                        _incomingBuffer.Clear();
+                    else
+                        _incomingBuffer.Remove(0, toDrop);
+                }
+            }
+
+            _incomingBuffer.Append(text);
+
+            // Ensure input processing timer is running
+            if (!_inputTimer.IsEnabled)
+                _inputTimer.Start();
         }
     }
+
+    // Processes a chunk of incoming data per tick to avoid locking UI for long periods
+    private void ProcessInputBuffer()
+    {
+        if (_terminal == null)
+        {
+            lock (_incomingLock) { _incomingBuffer.Clear(); }
+            _inputTimer.Stop();
+            return;
+        }
+
+        string chunk;
+        lock (_incomingLock)
+        {
+            if (_incomingBuffer.Length == 0)
+            {
+                _inputTimer.Stop();
+                return;
+            }
+
+            int len = Math.Min(InputProcessMaxChars, _incomingBuffer.Length);
+            chunk = _incomingBuffer.ToString(0, len);
+            _incomingBuffer.Remove(0, len);
+        }
+
+        // Feed the terminal (this may trigger ScreenChanged -> OnTerminalScreenChanged)
+        try
+        {
+            _terminal.Feed(chunk);
+        }
+        catch
+        {
+            // swallow parsing errors to keep control responsive
+        }
+    }
+
+    /// <summary>
+    /// Return a snapshot of formatted-text cache statistics for UI display.
+    /// </summary>
+    public FormattedTextCache.Stats GetFormattedTextCacheStats() => _formattedTextCache.GetStats();
+
+    /// <summary>
+    /// Clear formatted-text cache and reset its statistics.
+    /// </summary>
+    public void ClearFormattedTextCache() => _formattedTextCache.Clear();
 
     public (uint Columns, uint Rows, uint PixelWidth, uint PixelHeight) GetTerminalSize()
     {
@@ -187,6 +294,35 @@ public class TerminalControl : Control
         return (_terminalColumns, _terminalRows,
             (uint)Math.Max(0, Bounds.Width - padding.Left - padding.Right),
             (uint)Math.Max(0, Bounds.Height - padding.Top - padding.Bottom));
+    }
+
+    public void PopulateStatsViewModel(TerminalStatsViewModel vm)
+    {
+        ArgumentNullException.ThrowIfNull(vm);
+
+        // Snapshot cache stats
+        var cacheStats = _formattedTextCache.GetStats();
+
+        int incomingLen;
+        lock (_incomingLock) { incomingLen = _incomingBuffer.Length; }
+
+        // Terminal size (columns/rows) and scrollback count
+        var (cols, rows, _, _) = GetTerminalSize();
+        int scrollback = _terminal?.Scrollback.Count ?? 0;
+
+        vm.Columns = (int)cols;
+        vm.Rows = (int)rows;
+        vm.Scrollback = scrollback;
+        vm.IncomingLen = incomingLen;
+        vm.CharWidth = _charWidth;
+        vm.LineHeight = _lineHeight;
+
+        vm.Hits = cacheStats.Hits;
+        vm.Misses = cacheStats.Misses;
+        vm.Inserts = cacheStats.Inserts;
+        vm.Evictions = cacheStats.Evictions;
+        vm.CurrentCount = cacheStats.CurrentCount;
+        vm.Capacity = cacheStats.Capacity;
     }
 
     #endregion
@@ -225,19 +361,19 @@ public class TerminalControl : Control
 
         var testText = new FormattedText("M", CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, _cachedTypeface, FontSize, Brushes.White);
-        
+
         var newCharWidth = testText.WidthIncludingTrailingWhitespace;
         var newLineHeight = testText.Height;
 
         bool changed = Math.Abs(_charWidth - newCharWidth) > 0.01 || Math.Abs(_lineHeight - newLineHeight) > 0.01;
-        
+
         _charWidth = newCharWidth;
         _lineHeight = newLineHeight;
 
         if (changed)
         {
-             InvalidateAllRowCaches();
-             InvalidateMeasure();
+            InvalidateAllRowCaches();
+            InvalidateMeasure();
         }
         InvalidateVisual();
     }
@@ -257,12 +393,14 @@ public class TerminalControl : Control
     {
         base.OnDetachedFromVisualTree(e);
         _cursorBlinkTimer.Stop();
+        if (_renderTimer.IsEnabled) _renderTimer.Stop();
+        if (_inputTimer.IsEnabled) _inputTimer.Stop();
     }
 
-    protected override Size MeasureOverride(Size availableSize) 
+    protected override Size MeasureOverride(Size availableSize)
     {
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
-        return availableSize; 
+        return availableSize;
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -274,10 +412,10 @@ public class TerminalControl : Control
         var padding = Padding;
         var availableWidth = Math.Max(0, finalSize.Width - padding.Left - padding.Right);
         var availableHeight = Math.Max(0, finalSize.Height - padding.Top - padding.Bottom);
-        
+
         var newColumns = (uint)Math.Max(20, availableWidth / _charWidth);
         var newRows = (uint)Math.Max(5, availableHeight / _lineHeight);
-        
+
         bool colsChanged = newColumns != _terminalColumns;
         bool rowsChanged = newRows != _terminalRows;
 
@@ -286,10 +424,10 @@ public class TerminalControl : Control
             _terminalColumns = newColumns;
             _terminalRows = newRows;
             ResizeCache((int)newRows);
-            
+
             _terminal = new VirtualTerminal((int)newColumns, (int)newRows);
             _terminal.ScreenChanged += OnTerminalScreenChanged;
-            
+
             TerminalResized?.Invoke(newColumns, newRows, (uint)availableWidth, (uint)availableHeight);
         }
         else if (colsChanged || rowsChanged)
@@ -298,12 +436,12 @@ public class TerminalControl : Control
             _terminalRows = newRows;
             ResizeCache((int)newRows);
             InvalidateAllRowCaches();
-            
+
             _terminal.Resize((int)newColumns, (int)newRows);
-            
+
             TerminalResized?.Invoke(newColumns, newRows, (uint)availableWidth, (uint)availableHeight);
         }
-        
+
         return finalSize;
     }
 
@@ -317,23 +455,43 @@ public class TerminalControl : Control
         }
     }
 
+    // Collect dirty ranges and coalesce render calls to reduce redraw frequency
     private void OnTerminalScreenChanged()
     {
-        if (_terminal != null && _rowCaches.Length > 0)
+        if (_terminal == null || _rowCaches.Length == 0) return;
+
+        if (_terminal.DirtyTop <= _terminal.DirtyBottom)
         {
-            if (_terminal.DirtyTop <= _terminal.DirtyBottom)
-            {
-                int top = Math.Max(0, _terminal.DirtyTop);
-                int bottom = Math.Min(_rowCaches.Length - 1, _terminal.DirtyBottom);
-                
-                for (int i = top; i <= bottom; i++)
-                {
-                   _rowCaches[i].Clear();
-                }
-            }
+            int top = Math.Max(0, _terminal.DirtyTop);
+            int bottom = Math.Min(_rowCaches.Length - 1, _terminal.DirtyBottom);
+
+            // accumulate pending range
+            _pendingDirtyTop = Math.Min(_pendingDirtyTop, top);
+            _pendingDirtyBottom = Math.Max(_pendingDirtyBottom, bottom);
+
+            // start/keep the short timer running to batch updates
+            if (!_renderTimer.IsEnabled)
+                _renderTimer.Start();
         }
-        
-        Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Render);
+    }
+
+    // Apply pending changes (clear caches for dirty rows and trigger one InvalidateVisual)
+    private void ProcessPendingChanges()
+    {
+        if (_pendingDirtyTop == int.MaxValue || _pendingDirtyBottom == int.MinValue) return;
+
+        int top = _pendingDirtyTop;
+        int bottom = _pendingDirtyBottom;
+        _pendingDirtyTop = int.MaxValue;
+        _pendingDirtyBottom = int.MinValue;
+
+        top = Math.Max(0, Math.Min(top, _rowCaches.Length - 1));
+        bottom = Math.Max(0, Math.Min(bottom, _rowCaches.Length - 1));
+        for (int i = top; i <= bottom; i++)
+            _rowCaches[i].Clear();
+
+        // single invalidate for the batch
+        InvalidateVisual();
     }
 
     #endregion
@@ -377,7 +535,7 @@ public class TerminalControl : Control
 
         int cursorCol = terminal.CursorColumn;
         int cursorRow = terminal.CursorRow;
-        
+
         bool isCursorValid = _scrollOffset == 0 && cursorCol >= 0 && cursorCol < width && cursorRow >= 0 && cursorRow < height;
         bool hasSelection = HasSelection();
         (int selStartRow, int selEndRow) = hasSelection ? OrderedRows() : (-1, -1);
@@ -392,13 +550,13 @@ public class TerminalControl : Control
         for (int screenRow = 0; screenRow < height; screenRow++)
         {
             if (screenRow >= _rowCaches.Length) break;
-            
+
             int bufferIndex = visibleStart + screenRow;
             bool isHistory = bufferIndex < scrollbackCount;
             int rowInBuffer = isHistory ? bufferIndex : (bufferIndex - scrollbackCount);
-            
+
             if (!isHistory && rowInBuffer >= terminal.Height) break;
-            
+
             double rowY = offsetY + screenRow * _lineHeight;
 
             var cache = _rowCaches[screenRow];
@@ -416,17 +574,17 @@ public class TerminalControl : Control
 
             foreach (var run in cache.TextRuns)
             {
-                 context.DrawText(run.Text, new Point(run.X + offsetX, rowY));
-                 if (run.Underline)
-                 {
-                     double y = rowY + _lineHeight - 1;
-                     context.DrawLine(new Pen(GetBrush(run.Foreground), 1), 
-                        new Point(run.X + offsetX, y), 
-                        new Point(run.X + offsetX + run.Text.Width, y));
-                 }
+                context.DrawText(run.Text, new Point(run.X + offsetX, rowY));
+                if (run.Underline)
+                {
+                    double y = rowY + _lineHeight - 1;
+                    context.DrawLine(new Pen(GetBrush(run.Foreground), 1),
+                       new Point(run.X + offsetX, y),
+                       new Point(run.X + offsetX + run.Text.Width, y));
+                }
             }
 
-            if (hasSelection && screenRow >= selStartRow && screenRow <= selEndRow) 
+            if (hasSelection && screenRow >= selStartRow && screenRow <= selEndRow)
             {
                 var (sc, ec) = GetSelectionRangeForRow(screenRow);
                 if (sc < ec)
@@ -454,18 +612,18 @@ public class TerminalControl : Control
         bool currentBold = false;
         bool currentUnderline = false;
         _textRunBuilder.Clear();
-        
+
         for (int col = 0; col < width; col++)
         {
             TerminalCharacter cell;
             if (isHistory)
             {
-               var line = terminal.Scrollback[rowInBuffer];
-               cell = col < line.Length ? line[col] : TerminalCharacter.Blank;
+                var line = terminal.Scrollback[rowInBuffer];
+                cell = col < line.Length ? line[col] : TerminalCharacter.Blank;
             }
             else
             {
-               cell = terminal.GetCell(col, rowInBuffer);
+                cell = terminal.GetCell(col, rowInBuffer);
             }
 
             var cellBg = cell.Background.IsDefault ? defaultBg : ResolveColor(cell.Background, defaultBg);
@@ -485,7 +643,7 @@ public class TerminalControl : Control
             }
 
             char c = (cell.Char == '\0' || cell.IsHidden) ? ' ' : cell.Char;
-            
+
             if (cellFg != currentTextFg || cell.IsBold != currentBold || cell.IsUnderline != currentUnderline)
             {
                 AddTextRunToCache(cache, _textRunBuilder, textRunStart, currentTextFg, currentBold, currentUnderline);
@@ -514,7 +672,7 @@ public class TerminalControl : Control
 
     private void AddTextRunToCache(RowRenderCache cache, StringBuilder sb, int startCol, Color fg, bool bold, bool underline)
     {
-        if (sb.Length == 0 || startCol == -1) 
+        if (sb.Length == 0 || startCol == -1)
         {
             sb.Clear();
             return;
@@ -523,14 +681,14 @@ public class TerminalControl : Control
         string text = sb.ToString();
         sb.Clear();
 
-        if (!underline && string.IsNullOrWhiteSpace(text)) return; 
+        if (!underline && string.IsNullOrWhiteSpace(text)) return;
 
         double x = startCol * _charWidth;
         var tf = bold ? _cachedBoldTypeface : _cachedTypeface;
-        
-        var ft = new FormattedText(text, CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight, tf, FontSize, GetBrush(fg));
-        
+
+        // Use cached FormattedText to reduce allocations and GC pressure
+        var ft = _formattedTextCache.GetOrCreate(text, tf, FontSize, fg);
+
         cache.TextRuns.Add((x, ft, underline, fg));
     }
 
@@ -658,7 +816,7 @@ public class TerminalControl : Control
         int delta = e.Delta.Y > 0 ? 3 : -3;
         var maxScroll = Math.Max(0, _terminal.Scrollback.Count);
         var newOffset = Math.Clamp(_scrollOffset + delta, 0, maxScroll);
-        
+
         if (newOffset != _scrollOffset)
         {
             _scrollOffset = newOffset;
@@ -721,9 +879,9 @@ public class TerminalControl : Control
                 _scrollOffset = 0;
                 InvalidateAllRowCaches();
             }
-            
+
             if (HasSelection()) ClearSelection();
-            
+
             InputReceived?.Invoke(e.Text);
             e.Handled = true;
             _cursorBlink = true;
@@ -760,7 +918,7 @@ public class TerminalControl : Control
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard == null) return;
-        try 
+        try
         {
             var text = await ClipboardExtensions.TryGetTextAsync(clipboard);
             if (!string.IsNullOrEmpty(text))

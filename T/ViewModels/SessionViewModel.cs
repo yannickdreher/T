@@ -42,6 +42,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _transferDirection = "";
     [ObservableProperty] private bool _isActive;
     [ObservableProperty] private string _fileExplorerStatus = "Not connected";
+    [ObservableProperty] private TerminalStatsViewModel _terminalStats = new();
 
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
