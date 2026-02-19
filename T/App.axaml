@@ -63,6 +63,7 @@
 
 		<Style Selector="DataGridRow:selected">
 			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+			<Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorSecondaryBrush}"/>
 		</Style>
 	</Application.Styles>
 </Application>
