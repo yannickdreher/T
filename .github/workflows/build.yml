@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      shell: pwsh
+      run: |
+        dotnet restore T.UI/T.UI.csproj
+
+    - name: Build
+      shell: pwsh
+      run: |
+        dotnet build T.UI/T.UI.csproj -c Release --no-restore
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore T.UI/T.UI.csproj
+
+    - name: Build
+      run: |
+        dotnet build T.UI/T.UI.csproj -c Release --no-restore

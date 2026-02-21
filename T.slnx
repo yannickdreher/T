@@ -5,6 +5,7 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/Workflows/">
+    <File Path=".github/workflows/build.yml" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
   <Project Path="T.Abstractions/T.Abstractions.csproj" Id="d26b4314-f99c-4696-bdb4-774acd1b21b0" />
