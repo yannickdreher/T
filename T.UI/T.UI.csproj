@@ -4,6 +4,7 @@
     <Version>1.0.0</Version>
     <Company>Yannick Dreher</Company>
     <Product>T</Product>
+	<AssemblyName>T</AssemblyName>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
