@@ -64,7 +64,7 @@ jobs:
     - name: Restore dependencies
       shell: pwsh
       run: |
-        dotnet restore T.UI/T.UI.csproj
+        dotnet restore T.UI/T.UI.csproj -r win-x64
     
     - name: Publish application
       shell: pwsh
@@ -152,7 +152,7 @@ jobs:
     
     - name: Restore dependencies
       run: |
-        dotnet restore T.UI/T.UI.csproj
+        dotnet restore T.UI/T.UI.csproj -r linux-x64
     
     - name: Publish application
       run: |
