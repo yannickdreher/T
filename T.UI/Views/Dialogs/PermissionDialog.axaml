@@ -1,0 +1,32 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="T.UI.Views.Dialogs.PermissionDialog"
+             x:DataType="vm:PermissionDialogViewModel">
+
+    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,8">
+        <!-- Headers -->
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Owner" FontWeight="SemiBold" Margin="0,0,12,8"/>
+        <TextBlock Grid.Row="0" Grid.Column="1" Text="Group" FontWeight="SemiBold" Margin="0,0,12,8"/>
+        <TextBlock Grid.Row="0" Grid.Column="2" Text="Other" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+        <!-- Read -->
+        <CheckBox Grid.Row="1" Grid.Column="0" Content="Read" IsChecked="{Binding OwnerRead}"/>
+        <CheckBox Grid.Row="1" Grid.Column="1" Content="Read" IsChecked="{Binding GroupRead}"/>
+        <CheckBox Grid.Row="1" Grid.Column="2" Content="Read" IsChecked="{Binding OtherRead}"/>
+
+        <!-- Write -->
+        <CheckBox Grid.Row="2" Grid.Column="0" Content="Write" IsChecked="{Binding OwnerWrite}"/>
+        <CheckBox Grid.Row="2" Grid.Column="1" Content="Write" IsChecked="{Binding GroupWrite}"/>
+        <CheckBox Grid.Row="2" Grid.Column="2" Content="Write" IsChecked="{Binding OtherWrite}"/>
+
+        <!-- Execute -->
+        <CheckBox Grid.Row="3" Grid.Column="0" Content="Execute" IsChecked="{Binding OwnerExecute}"/>
+        <CheckBox Grid.Row="3" Grid.Column="1" Content="Execute" IsChecked="{Binding GroupExecute}"/>
+        <CheckBox Grid.Row="3" Grid.Column="2" Content="Execute" IsChecked="{Binding OtherExecute}"/>
+    </Grid>
+</UserControl>

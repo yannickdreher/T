@@ -1,0 +1,82 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:T.UI.ViewModels"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:Class="T.UI.Views.Dialogs.HostKeyDialog"
+             x:DataType="vm:HostKeyDialogViewModel">
+
+    <StackPanel Spacing="16">
+        <!-- Warning InfoBar -->
+        <ui:InfoBar Severity="Warning"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Title="Host Key Verification"
+                    Message="The authenticity of the host cannot be established. This might be the first time you connect to this server, or the server's key has changed."/>
+
+        <!-- Host Information -->
+        <StackPanel Spacing="8">
+            <TextBlock Text="Host Details"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                  RowSpacing="8" ColumnSpacing="12">
+                
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Text="Host:"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                <TextBlock Grid.Row="0" Grid.Column="1"
+                           Text="{Binding Host}"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0"
+                           Text="Port:"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                <TextBlock Grid.Row="1" Grid.Column="1"
+                           Text="{Binding Port}"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0"
+                           Text="Key Type:"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                <TextBlock Grid.Row="2" Grid.Column="1"
+                           Text="{Binding KeyType}"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0"
+                           Text="SHA256:"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                <SelectableTextBlock Grid.Row="3" Grid.Column="1"
+                                     Text="{Binding Fingerprint}"
+                                     FontFamily="Cascadia Code,Consolas,Courier New"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}"/>
+
+                <TextBlock Grid.Row="4" Grid.Column="0"
+                           Text="MD5:"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                <SelectableTextBlock Grid.Row="4" Grid.Column="1"
+                                     Text="{Binding FingerprintMD5}"
+                                     FontFamily="Cascadia Code,Consolas,Courier New"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Security Notice InfoBar -->
+        <ui:InfoBar Severity="Informational"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Title="Security Notice"
+                    Message="Please verify this fingerprint matches the one provided by your server administrator. If you're unsure, contact your administrator before continuing."/>
+
+        <!-- Auto-save Notice InfoBar -->
+        <ui:InfoBar Severity="Informational"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Message="If you accept, this key will be automatically saved to ~/.ssh/known_hosts"/>
+    </StackPanel>
+</UserControl>

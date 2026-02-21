@@ -7,6 +7,9 @@
   <Folder Name="/Workflows/">
     <File Path=".github/workflows/release.yml" />
   </Folder>
-  <Project Path="T/T.csproj" />
-  <Project Path="VT/VT.csproj" />
+  <Project Path="T.Abstractions/T.Abstractions.csproj" Id="d26b4314-f99c-4696-bdb4-774acd1b21b0" />
+  <Project Path="T.Models/T.Models.csproj" Id="bfb5331c-e57b-49f9-83c7-201015bd5d0d" />
+  <Project Path="T.Services/T.Services.csproj" Id="44c0e13a-c8a7-458e-985d-89ce2a85b93e" />
+  <Project Path="T.Terminal/T.Terminal.csproj" />
+  <Project Path="T.UI/T.UI.csproj" />
 </Solution>

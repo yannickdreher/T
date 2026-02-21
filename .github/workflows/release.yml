@@ -64,15 +64,16 @@ jobs:
     - name: Restore dependencies
       shell: pwsh
       run: |
-        dotnet restore T/T.csproj
+        dotnet restore T.UI/T.UI.csproj
     
     - name: Publish application
       shell: pwsh
       run: |
-        dotnet publish T/T.csproj `
+        dotnet publish T.UI/T.UI.csproj `
           -c Release `
           -r win-x64 `
           --self-contained `
+          --no-restore `
           -p:Version=${{ steps.version.outputs.VERSION }} `
           -o publish/
     
@@ -151,14 +152,15 @@ jobs:
     
     - name: Restore dependencies
       run: |
-        dotnet restore T/T.csproj
+        dotnet restore T.UI/T.UI.csproj
     
     - name: Publish application
       run: |
-        dotnet publish T/T.csproj \
+        dotnet publish T.UI/T.UI.csproj \
           -c Release \
           -r linux-x64 \
           --self-contained \
+          --no-restore \
           -p:Version=${{ steps.version.outputs.VERSION }} \
           -o publish/
     
