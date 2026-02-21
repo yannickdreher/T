@@ -1,5 +1,7 @@
 ﻿# T - SSH Terminal Client
 
+[![Build](https://github.com/yannickdreher/T/actions/workflows/build.yml/badge.svg)](https://github.com/yannickdreher/T/actions/workflows/build.yml)
+
 A modern, cross-platform SSH terminal client built with Avalonia UI.
 
 ## Features
@@ -15,7 +17,7 @@ This project is licensed under the **GNU General Public License v3.0** - see the
 
 ### Third-Party Licenses
 
-This project uses several open-source libraries. See [NOTICES.md](NOTICES.md) for complete license information.
+This project uses several open-source libraries. See [NOTICES](NOTICES.md) for complete license information.
 
 ## Contributing
 
