@@ -105,7 +105,7 @@ public class TerminalControl : Control
         AvaloniaProperty.Register<TerminalControl, TerminalCursorStyle>(nameof(CursorStyle), TerminalCursorStyle.Bar);
 
     public static readonly StyledProperty<bool> ShowStatsOverlayProperty =
-        AvaloniaProperty.Register<TerminalControl, bool>(nameof(ShowStatsOverlay), true);
+        AvaloniaProperty.Register<TerminalControl, bool>(nameof(ShowStatsOverlay), false);
 
     public FontFamily FontFamily
     {
