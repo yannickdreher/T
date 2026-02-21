@@ -159,7 +159,19 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         _sshService.SftpStatusChanged += message => Dispatcher.UIThread.Post(() =>
         {
             FileExplorerStatus = message;
-            if (!message.Contains("available")) RemoteFiles.Clear();
+
+            if (message.Contains("available"))
+            {
+                if (_sshService?.IsSftpAvailable == true)
+                {
+                    CurrentPath = _sshService.CurrentDirectory;
+                    _ = RefreshDirectoryAsync();
+                }
+            }
+            else
+            {
+                RemoteFiles.Clear();
+            }
         });
 
         _sshService.ShellDataReceived += output =>
@@ -434,9 +446,6 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     }
 
     public void SendTerminalInput(string text = "") => _sshService?.SendInput(text);
-
-    private static Window? GetMainWindow() =>
-        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d ? d.MainWindow : null;
 
     [RelayCommand]
     private async Task OpenFileAsync(RemoteFile? file)
