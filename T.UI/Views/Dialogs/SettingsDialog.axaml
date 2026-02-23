@@ -1,16 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:models="using:T.Models"
+             xmlns:vm="using:T.UI.ViewModels"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:sys="using:System"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
              x:Class="T.UI.Views.Dialogs.SettingsDialog"
-             x:DataType="models:AppSettings">
+             x:DataType="vm:SettingsDialogViewModel">
 
     <Design.DataContext>
-        <models:AppSettings/>
+        <vm:SettingsDialogViewModel/>
     </Design.DataContext>
 
     <Grid ColumnDefinitions="160,*" ColumnSpacing="4">
@@ -58,7 +58,9 @@
                                 Spacing="8">
                         <StackPanel Spacing="4">
                             <TextBlock Text="Theme"/>
-                            <ComboBox SelectedItem="{Binding General.Theme}" HorizontalAlignment="Stretch">
+                            <ComboBox x:Name="ThemeCombo"
+                                      SelectedItem="{Binding General.Theme}"
+                                      HorizontalAlignment="Stretch">
                                 <sys:String>System</sys:String>
                                 <sys:String>Light</sys:String>
                                 <sys:String>Dark</sys:String>
@@ -67,7 +69,9 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Language"/>
-                            <ComboBox SelectedItem="{Binding General.Language}" HorizontalAlignment="Stretch">
+                            <ComboBox x:Name="LanguageCombo"
+                                      SelectedItem="{Binding General.Language}"
+                                      HorizontalAlignment="Stretch">
                                 <sys:String>System</sys:String>
                                 <sys:String>English</sys:String>
                                 <sys:String>Deutsch</sys:String>
@@ -76,13 +80,15 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Connection timeout (seconds)"/>
-                            <NumericUpDown Value="{Binding General.ConnectionTimeout}"
+                            <NumericUpDown x:Name="ConnectionTimeoutInput"
+                                           Value="{Binding General.ConnectionTimeout}"
                                            Minimum="5" Maximum="120" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Keep-alive interval (seconds)"/>
-                            <NumericUpDown Value="{Binding General.KeepAliveInterval}"
+                            <NumericUpDown x:Name="KeepAliveIntervalInput"
+                                           Value="{Binding General.KeepAliveInterval}"
                                            Minimum="10" Maximum="120" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
@@ -101,7 +107,8 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Update Channel"/>
-                            <ComboBox SelectedItem="{Binding Update.UpdateChannel}" 
+                            <ComboBox x:Name="UpdateChannelCombo"
+                                      SelectedItem="{Binding Update.UpdateChannel}" 
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Stable</sys:String>
                                 <sys:String>Beta</sys:String>
@@ -124,7 +131,8 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Sort files by"/>
-                            <ComboBox SelectedItem="{Binding Explorer.SortBy}"
+                            <ComboBox x:Name="SortByCombo"
+                                      SelectedItem="{Binding Explorer.SortBy}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Name</sys:String>
                                 <sys:String>Size</sys:String>
@@ -135,7 +143,8 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Default download path"/>
-                            <TextBox Text="{Binding Explorer.DefaultDownloadPath}"
+                            <TextBox x:Name="DefaultDownloadPathBox"
+                                     Text="{Binding Explorer.DefaultDownloadPath}"
                                      Watermark="Leave empty for ~/Downloads"/>
                         </StackPanel>
                     </StackPanel>
@@ -146,7 +155,8 @@
                                 Spacing="8">
                         <StackPanel Spacing="4">
                             <TextBlock Text="Font family"/>
-                            <ComboBox SelectedItem="{Binding Terminal.TerminalFontFamily}"
+                            <ComboBox x:Name="TerminalFontFamilyCombo"
+                                      SelectedItem="{Binding Terminal.TerminalFontFamily}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Consolas</sys:String>
                                 <sys:String>Cascadia Mono</sys:String>
@@ -159,13 +169,15 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Font size"/>
-                            <NumericUpDown Value="{Binding Terminal.TerminalFontSize}"
+                            <NumericUpDown x:Name="TerminalFontSizeInput"
+                                           Value="{Binding Terminal.TerminalFontSize}"
                                            Minimum="8" Maximum="32" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Cursor style"/>
-                            <ComboBox SelectedItem="{Binding Terminal.CursorStyle}"
+                            <ComboBox x:Name="CursorStyleCombo"
+                                      SelectedItem="{Binding Terminal.CursorStyle}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Bar</sys:String>
                                 <sys:String>Block</sys:String>
@@ -182,32 +194,37 @@
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <StackPanel Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Background color"/>
-                                <TextBox Text="{Binding Terminal.TerminalBackground}"
+                                <TextBox x:Name="TerminalBackgroundBox"
+                                         Text="{Binding Terminal.TerminalBackground}"
                                          MaxLength="7" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Foreground color"/>
-                                <TextBox Text="{Binding Terminal.TerminalForeground}"
+                                <TextBox x:Name="TerminalForegroundBox"
+                                         Text="{Binding Terminal.TerminalForeground}"
                                          HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Grid>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Cursor color"/>
-                            <TextBox Text="{Binding Terminal.CursorColor}"
+                            <TextBox x:Name="CursorColorBox"
+                                     Text="{Binding Terminal.CursorColor}"
                                      HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Scrollback lines"/>
-                            <NumericUpDown Value="{Binding Terminal.ScrollbackLines}"
+                            <NumericUpDown x:Name="ScrollbackLinesInput"
+                                           Value="{Binding Terminal.ScrollbackLines}"
                                            Minimum="1000" Maximum="100000"
                                            Increment="1000" HorizontalAlignment="Stretch"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Terminal padding (px)"/>
-                            <NumericUpDown Value="{Binding Terminal.TerminalPadding}"
+                            <NumericUpDown x:Name="TerminalPaddingInput"
+                                           Value="{Binding Terminal.TerminalPadding}"
                                            Minimum="0" Maximum="32" HorizontalAlignment="Stretch"/>
                         </StackPanel>
                     </StackPanel>

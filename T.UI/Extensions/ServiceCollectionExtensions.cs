@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         // ── ViewModels ──
         services.AddSingleton<SessionsTreeViewModel>();
         services.AddSingleton<MainWindowViewModel>();
+        services.AddTransient<SettingsDialogViewModel>();
         services.AddTransient<UpdateDialogViewModel>();
         services.AddTransient<SessionViewModel>();
 

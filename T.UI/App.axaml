@@ -15,6 +15,8 @@
                                    TrueBrush="LimeGreen"
                                    FalseBrush="Gray"/>
         <conv:IndexEqualsConverter x:Key="EqualsConverter"/>
+        <conv:BoolNegationConverter x:Key="BoolNegationConverter"/>
+        <conv:FirstValidationErrorConverter x:Key="FirstValidationErrorConverter"/>
 
         <!-- Override the default font resource -->
         <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>

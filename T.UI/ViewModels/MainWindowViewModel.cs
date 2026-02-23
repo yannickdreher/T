@@ -33,11 +33,15 @@ public partial class MainWindowViewModel(
     {
         if (Host is null) return;
 
-        var window = new SettingsWindow { DataContext = Settings };
+        var vm = _serviceProvider.GetRequiredService<SettingsDialogViewModel>();
+        var window = new SettingsWindow { DataContext = vm };
         var result = await window.ShowDialog<bool>(Host);
 
         if (result)
+        {
+            vm.ApplyTo();
             await _settingsService.SaveAsync();
+        }
     }
 
     [RelayCommand]
