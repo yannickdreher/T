@@ -1,6 +1,4 @@
-﻿using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
+﻿using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,6 +53,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _isActive;
     [ObservableProperty] private string _fileExplorerStatus = "Not connected";
     [ObservableProperty] private TerminalStatsViewModel _terminalStats = new();
+    [ObservableProperty] private bool _showTerminalStatsOverlay;
 
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
@@ -95,15 +94,32 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     private void LoadDesignTimeData()
     {
+        Session.ConnectionStatus = ConnectionStatus.Connected;
         IsConnected = true;
-        CurrentPath = "/home/user";
+        IsConnecting = false;
+        IsReconnecting = false;
+        ShowOverlay = false;
+        OverlayMessage = "Connecting...";
         StatusMessage = "Connected to example.com";
+        FileExplorerStatus = "SFTP ready";
+        CurrentPath = "/home/user";
+
+        IsTransferring = true;
+        TransferProgress = 42;
+        TransferFileName = "logs.tar.gz";
+        TransferSpeed = "2.4 MB/s";
+        TransferEta = "00:12";
+        TransferDirection = "↓";
+
         RemoteFiles =
         [
             new RemoteFile { Name = "..", IsDirectory = true, Permissions = "755" },
             new RemoteFile { Name = "Documents", IsDirectory = true, Permissions = "755" },
             new RemoteFile { Name = "config.json", IsDirectory = false, Size = 1024, Permissions = "644" },
+            new RemoteFile { Name = "logs.tar.gz", IsDirectory = false, Size = 10_485_760, Permissions = "600" }
         ];
+
+        SelectedFile = RemoteFiles.Count > 2 ? RemoteFiles[2] : null;
     }
 
     private void OnSettingsChanged(AppSettings settings)
@@ -518,6 +534,12 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 catch { throw new InvalidOperationException($"Could not open file: {ex.Message}", ex); }
             else throw;
         }
+    }
+
+    [RelayCommand]
+    private void ToggleTerminalStatsOverlay()
+    {
+        ShowTerminalStatsOverlay = !ShowTerminalStatsOverlay;
     }
 
     public void Dispose()

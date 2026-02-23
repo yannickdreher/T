@@ -40,6 +40,16 @@ public partial class SessionsTreeViewModel : ViewModelBase
     public bool CanEditSelected => SelectedTreeNode != null;
     public bool CanDisconnectSelected => OpenSessions.Any(s => s.Session.Id == SelectedSession?.Id);
 
+    // Design-time constructor
+    public SessionsTreeViewModel()
+    {
+        _storageService = null!;
+        _sshManager = null!;
+        _windowProvider = null!;
+        _serviceProvider = null!;
+        LoadDesignTimeData();
+    }
+
     // DI constructor
     public SessionsTreeViewModel(
         ISessionStorageService storageService,

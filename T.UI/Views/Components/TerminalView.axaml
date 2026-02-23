@@ -20,6 +20,7 @@
                                          HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          MinWidth="128"
-                                         Margin="8" />
+                                         Margin="8"
+                                         IsVisible="{Binding ShowTerminalStatsOverlay}"/>
     </Grid>
 </UserControl>

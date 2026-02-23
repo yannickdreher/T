@@ -37,37 +37,39 @@
                             Command="{Binding ExpandAllFoldersCommand}"
                             Width="32"
                             ToolTip.Tip="Expand all">
-                        <ui:SymbolIcon Symbol="ChevronDown"/>
+                        <PathIcon Data="{StaticResource chevron_down_regular}" Width="14" Height="14"/>
                     </Button>
                     <Button Grid.Column="1"
                             Command="{Binding CollapseAllFoldersCommand}"
                             Width="32"
                             ToolTip.Tip="Collapse all">
-                        <ui:SymbolIcon Symbol="ChevronUp"/>
+                        <PathIcon Data="{StaticResource chevron_up_regular}" Width="14" Height="14"/>
                     </Button>
                     <Button Grid.Column="2"
                             Command="{Binding NewFolderCommand}"
-                            Width="38"
+                            Width="32"
                             ToolTip.Tip="New Folder">
-                        <ui:SymbolIcon Symbol="NewFolder"/>
+                        <PathIcon Data="{StaticResource folder_add_regular}" Width="14" Height="14"/>
                     </Button>
                     <Button Grid.Column="3"
                             Command="{Binding NewSessionCommand}"
+                            MinWidth="32"
                             HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
                             ToolTip.Tip="New Session">
-                        <ui:SymbolIcon Symbol="Add"/>
+                        <PathIcon Data="{StaticResource plug_connected_add_regular}" Width="14" Height="14"/>
                     </Button>
                     <Button Grid.Column="4"
                             Command="{Binding EditSelectedCommand}"
-                            Width="38"
+                            Width="32"
                             ToolTip.Tip="Edit">
-                        <ui:SymbolIcon Symbol="Edit"/>
+                        <PathIcon Data="{StaticResource document_edit_regular}" Width="14" Height="14"/>
                     </Button>
                     <Button Grid.Column="5"
                             Command="{Binding DeleteSelectedCommand}"
-                            Width="38"
+                            Width="32"
                             ToolTip.Tip="Delete">
-                        <ui:SymbolIcon Symbol="Delete"/>
+                        <PathIcon Data="{StaticResource delete_regular}" Width="14" Height="14"/>
                     </Button>
                 </Grid>
             </StackPanel>
@@ -86,7 +88,10 @@
                     <DataTemplate DataType="models:FolderTreeNode">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
                               DragDrop.AllowDrop="True">
-                            <ui:SymbolIcon Grid.Column="0" Symbol="Folder" VerticalAlignment="Center"/>
+                            <PathIcon Grid.Column="0"
+                                      Data="{StaticResource folder_regular}"
+                                      Width="14" Height="14"
+                                      VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding Name}"
                                        TextTrimming="CharacterEllipsis" MaxWidth="180"
                                        TextAlignment="Left" HorizontalAlignment="Left"/>

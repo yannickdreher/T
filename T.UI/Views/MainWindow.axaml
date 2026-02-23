@@ -12,7 +12,8 @@
 			   x:Class="T.UI.Views.MainWindow"
 			   x:DataType="vm:MainWindowViewModel"
 			   Title="T" Width="1200" Height="700" WindowState="Maximized"
-			   Icon="avares://T/Assets/logo.ico">
+			   Icon="avares://T/Assets/logo.ico"
+			   FontSize="12">
 
 	<!-- Design-Time DataContext -->
 	<Design.DataContext>
@@ -27,7 +28,7 @@
 
 		<StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 			<Image Width="20" Height="20" Source="avares://T/Assets/logo.ico"/>
-			<Menu FontSize="12" VerticalAlignment="Center">
+			<Menu VerticalAlignment="Center">
 				<Menu.Styles>
 					<Style Selector="MenuItem">
 						<Setter Property="Padding" Value="2"/>
@@ -36,7 +37,7 @@
 				</Menu.Styles>
 
 				<MenuItem Header="Settings" Command="{Binding ShowSettingsCommand}"/>
-				<MenuItem Header="About" Click="OnAboutClick"/>
+				<MenuItem Header="About" Command="{Binding ShowAboutCommand}"/>
 			</Menu>
 		</StackPanel>
 

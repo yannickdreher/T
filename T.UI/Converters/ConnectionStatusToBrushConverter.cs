@@ -6,26 +6,31 @@ using T.Models;
 
 namespace T.UI.Converters;
 
-public class ConnectionStatusToBrushConverter : IValueConverter
+public sealed class ConnectionStatusToBrushConverter : IValueConverter
 {
+    public IBrush? DisconnectedBrush { get; set; }
+    public IBrush? ConnectingBrush { get; set; }
+    public IBrush? ConnectedBrush { get; set; }
+    public IBrush? DisconnectingBrush { get; set; }
+    public IBrush? ReconnectingBrush { get; set; }
+    public IBrush? DefaultBrush { get; set; }
+
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not ConnectionStatus status)
-            return Brushes.Gray;
+            return DefaultBrush ?? Brushes.Gray;
 
         return status switch
         {
-            ConnectionStatus.Connected => Brushes.LimeGreen,
-            ConnectionStatus.Connecting => Brushes.Orange,
-            ConnectionStatus.Reconnecting => Brushes.DarkOrange,
-            ConnectionStatus.Disconnecting => Brushes.LightGray,
-            ConnectionStatus.Disconnected => Brushes.Gray,
-            _ => Brushes.Gray
+            ConnectionStatus.Connected => ConnectedBrush ?? Brushes.LimeGreen,
+            ConnectionStatus.Connecting => ConnectingBrush ?? Brushes.Gold,
+            ConnectionStatus.Reconnecting => ReconnectingBrush ?? Brushes.Orange,
+            ConnectionStatus.Disconnecting => DisconnectingBrush ?? Brushes.OrangeRed,
+            ConnectionStatus.Disconnected => DisconnectedBrush ?? Brushes.Gray,
+            _ => DefaultBrush ?? Brushes.Gray
         };
     }
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }

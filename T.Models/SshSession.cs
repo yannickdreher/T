@@ -19,4 +19,11 @@ public partial class SshSession : ObservableObject
     public bool IsConnected => ConnectionStatus == ConnectionStatus.Connected;
     public bool IsConnecting => ConnectionStatus == ConnectionStatus.Connecting;
     public bool IsReconnecting => ConnectionStatus == ConnectionStatus.Reconnecting;
+
+    partial void OnConnectionStatusChanged(ConnectionStatus value)
+    {
+        OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(IsConnecting));
+        OnPropertyChanged(nameof(IsReconnecting));
+    }
 }

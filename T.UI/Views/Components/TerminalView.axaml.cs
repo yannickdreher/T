@@ -60,7 +60,7 @@ public partial class TerminalView : UserControl
         ApplySettings();
 
         _stats?.Model = vm.TerminalStats;
-        _statsTimer.Start();
+        UpdateStatsOverlay();
     }
 
     private void DetachViewModel()
@@ -72,6 +72,7 @@ public partial class TerminalView : UserControl
         _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
 
         _statsTimer.Stop();
+        if (_stats != null) _stats.IsVisible = false;
         _stats?.Model = null;
         _currentVm = null;
     }
@@ -109,11 +110,31 @@ public partial class TerminalView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(SessionViewModel.TerminalSettings) || _currentVm is null) return;
+        if (_currentVm is null) return;
 
-        _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
-        _currentVm.TerminalSettings.PropertyChanged += OnSettingsChanged;
-        ApplySettings();
+        if (e.PropertyName == nameof(SessionViewModel.TerminalSettings))
+        {
+            _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
+            _currentVm.TerminalSettings.PropertyChanged += OnSettingsChanged;
+            ApplySettings();
+        }
+        else if (e.PropertyName == nameof(SessionViewModel.ShowTerminalStatsOverlay))
+        {
+            UpdateStatsOverlay();
+        }
+    }
+
+    private void UpdateStatsOverlay()
+    {
+        if (_currentVm is null || _stats is null) return;
+
+        var show = _currentVm.ShowTerminalStatsOverlay;
+        _stats.IsVisible = show;
+
+        if (show)
+            _statsTimer.Start();
+        else
+            _statsTimer.Stop();
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

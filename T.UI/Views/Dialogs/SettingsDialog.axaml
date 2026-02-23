@@ -14,7 +14,7 @@
     </Design.DataContext>
 
     <Grid ColumnDefinitions="160,*" ColumnSpacing="4">
-        
+
         <!-- Navigation -->
         <ListBox x:Name="SettingsNav"
                  SelectedIndex="0"
@@ -24,19 +24,19 @@
                  BorderThickness="0">
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ui:SymbolIcon Symbol="Setting"/>
+                    <PathIcon Data="{StaticResource settings_regular}" Width="14" Height="14"/>
                     <TextBlock Text="General"/>
                 </StackPanel>
             </ListBoxItem>
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ui:SymbolIcon Symbol="Folder"/>
+                    <PathIcon Data="{StaticResource folder_regular}" Width="14" Height="14"/>
                     <TextBlock Text="Explorer"/>
                 </StackPanel>
             </ListBoxItem>
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ui:SymbolIcon Symbol="Code"/>
+                    <PathIcon Data="{StaticResource window_console_regular}" Width="14" Height="14"/>
                     <TextBlock Text="Terminal"/>
                 </StackPanel>
             </ListBoxItem>
@@ -99,16 +99,16 @@
                                   IsChecked="{Binding General.ReconnectOnStartup}"/>
 
                         <Separator Margin="0,8"/>
-                        
+
                         <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                        
+
                         <CheckBox Content="Check for updates on startup"
                                   IsChecked="{Binding Update.CheckForUpdatesOnStartup}"/>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Update Channel"/>
                             <ComboBox x:Name="UpdateChannelCombo"
-                                      SelectedItem="{Binding Update.UpdateChannel}" 
+                                      SelectedItem="{Binding Update.UpdateChannel}"
                                       HorizontalAlignment="Stretch">
                                 <sys:String>Stable</sys:String>
                                 <sys:String>Beta</sys:String>
