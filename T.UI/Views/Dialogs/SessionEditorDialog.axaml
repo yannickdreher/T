@@ -76,16 +76,7 @@
             <TextBlock Text="Connect via (jump host, optional)"
                        Opacity="0.7"/>
             <ComboBox x:Name="ProxyJumpCombo"
-                      HorizontalAlignment="Stretch"
-                      ItemsSource="{Binding #EditorRoot.AvailableProxySessions}"
-                      SelectedValue="{Binding ProxyJumpSessionId}"
-                      SelectedValueBinding="{Binding Id}">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="models:SshSession">
-                        <TextBlock Text="{Binding Name, FallbackValue='None (direct connection)'}"/>
-                    </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
+                      HorizontalAlignment="Stretch"/>
         </StackPanel>
 
         <!-- Description -->

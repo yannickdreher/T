@@ -209,9 +209,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
         var dialogContent = _serviceProvider.GetRequiredService<SessionEditorDialog>();
         dialogContent.DataContext = session;
 
-        dialogContent.AvailableProxySessions.Add(null!);
-        foreach (var s in Sessions)
-            dialogContent.AvailableProxySessions.Add(s);
+        dialogContent.AddProxySessions(Sessions);
 
         var dialog = new FAContentDialog
         {
@@ -222,6 +220,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
 
         if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
+            session.ProxyJumpSessionId = dialogContent.SelectedProxySessionId;
             Sessions.Add(session);
             await _storageService.AddSessionAsync(session);
             BuildTree();
@@ -246,9 +245,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
         var dialogContent = _serviceProvider.GetRequiredService<SessionEditorDialog>();
         dialogContent.DataContext = copy;
 
-        dialogContent.AvailableProxySessions.Add(null!);
-        foreach (var s in Sessions.Where(s => s.Id != copy.Id))
-            dialogContent.AvailableProxySessions.Add(s);
+        dialogContent.AddProxySessions(Sessions.Where(s => s.Id != copy.Id));
 
         var dialog = new FAContentDialog
         {
@@ -259,6 +256,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
 
         if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
+            copy.ProxyJumpSessionId = dialogContent.SelectedProxySessionId;
             var index = Sessions.IndexOf(SelectedSession);
             if (index >= 0) Sessions[index] = copy;
             await _storageService.UpdateSessionAsync(copy);
