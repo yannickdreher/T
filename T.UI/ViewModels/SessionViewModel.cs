@@ -9,10 +9,12 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using T.Abstractions;
 using T.Models;
 using T.UI.Abstractions;
+using T.UI.Models;
 using T.UI.Views.Dialogs;
 
 namespace T.UI.ViewModels;
@@ -54,9 +56,25 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _fileExplorerStatus = "Not connected";
     [ObservableProperty] private TerminalStatsViewModel _terminalStats = new();
     [ObservableProperty] private bool _showTerminalStatsOverlay;
+    [ObservableProperty] private int _selectedSessionTab;
+    [ObservableProperty] private int _explorerViewMode; // 0 = Details, 1 = List, 2 = Icons
+    [ObservableProperty] private ObservableCollection<DirectoryNode> _rootNodes = [];
+    [ObservableProperty] private DirectoryNode? _selectedNode;
+    [ObservableProperty] private SystemMonitorViewModel _systemMonitor = new();
+    [ObservableProperty] private string _pathInput = "/";
+
+    private readonly Stack<string> _backHistory = new();
+    private bool _suppressNodeNavigation;
 
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
+
+    /// <summary>
+    /// Raised when this session is disposed (tab closed). Views bound to this
+    /// view model use this - rather than visual-tree detach - to tear down the
+    /// terminal, so the terminal survives being re-parented across tab switches.
+    /// </summary>
+    public event Action<SessionViewModel>? Disposed;
 
     public string DisplayName => IsConnected ? $"{Session.Name} ●" : Session.Name;
 
@@ -110,6 +128,22 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         TransferSpeed = "2.4 MB/s";
         TransferEta = "00:12";
         TransferDirection = "↓";
+
+        PathInput = CurrentPath;
+        SystemMonitor.LoadDesignTimeData();
+        RootNodes =
+        [
+            new DirectoryNode("/", "/", withPlaceholder: false)
+            {
+                IsExpanded = true,
+                Children =
+                [
+                    new DirectoryNode("home", "/home"),
+                    new DirectoryNode("etc", "/etc"),
+                    new DirectoryNode("var", "/var")
+                ]
+            }
+        ];
 
         RemoteFiles =
         [
@@ -172,7 +206,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         _sshService.AuthenticationFailed += async (err) => await ShowCredentialsDialogAsync(err);
         _sshService.HostKeyVerificationRequired += async (info) => await ShowHostKeyDialogAsync(info);
 
-        _sshService.SftpStatusChanged += message => Dispatcher.UIThread.Post(() =>
+        _sshService.SftpStatusChanged += message => Dispatcher.UIThread.Post(async () =>
         {
             FileExplorerStatus = message;
 
@@ -181,12 +215,15 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 if (_sshService?.IsSftpAvailable == true)
                 {
                     CurrentPath = _sshService.CurrentDirectory;
-                    _ = RefreshDirectoryAsync();
+                    await RefreshDirectoryAsync();
+                    if (RootNodes.Count == 0)
+                        await InitializeTreeAsync();
                 }
             }
             else
             {
                 RemoteFiles.Clear();
+                RootNodes.Clear();
             }
         });
 
@@ -267,16 +304,16 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             var view = _serviceProvider.GetRequiredService<HostKeyDialog>();
             view.DataContext = vm;
 
-            var dialog = new ContentDialog
+            var dialog = new FAContentDialog
             {
                 Title = "Host Key Verification",
                 PrimaryButtonText = "Accept & Connect",
                 SecondaryButtonText = "Reject",
-                DefaultButton = ContentDialogButton.Secondary,
+                DefaultButton = FAContentDialogButton.Secondary,
                 Content = view
             };
 
-            accepted = await dialog.ShowAsync(Host) == ContentDialogResult.Primary;
+            accepted = await dialog.ShowAsync(Host) == FAContentDialogResult.Primary;
             if (!accepted)
             {
                 StatusMessage = "Connection rejected by user";
@@ -304,14 +341,14 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             var view = _serviceProvider.GetRequiredService<CredentialsDialog>();
             view.DataContext = vm;
 
-            var dialog = new ContentDialog
+            var dialog = new FAContentDialog
             {
                 Title = "Login", PrimaryButtonText = "Connect", CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Primary,
+                DefaultButton = FAContentDialogButton.Primary,
                 Content = view
             };
 
-            if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary && vm.Result != null)
+            if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary && vm.Result != null)
             {
                 credentials = vm.Result;
                 if (vm.Result.SaveCredentials)
@@ -349,6 +386,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 StatusMessage = $"Connected to {Session.Host}";
                 OnPropertyChanged(nameof(DisplayName));
                 ConnectCommand.NotifyCanExecuteChanged();
+                if (_sshService is not null) SystemMonitor.Start(_sshService);
                 _ = RestoreSessionAsync();
                 break;
             case ConnectionStatus.Disconnecting:
@@ -367,6 +405,9 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 StatusMessage = "Disconnected";
                 FileExplorerStatus = "Not connected - Click 'Connect' to establish a connection";
                 RemoteFiles.Clear();
+                RootNodes.Clear();
+                _backHistory.Clear();
+                SystemMonitor.Stop();
                 OnPropertyChanged(nameof(DisplayName));
                 ConnectCommand.NotifyCanExecuteChanged();
                 SessionClosed?.Invoke(this);
@@ -386,6 +427,156 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             CurrentPath = _sshService.CurrentDirectory;
             await RefreshDirectoryAsync();
         }
+        await InitializeTreeAsync();
+    }
+
+    private async Task InitializeTreeAsync()
+    {
+        if (_sshService is null || !_sshService.IsSftpAvailable) return;
+        if (RootNodes.Count > 0) return;
+        var root = new DirectoryNode("/", "/", withPlaceholder: false);
+        await LoadNodeChildrenAsync(root);
+        root.IsExpanded = true;
+        RootNodes = [root];
+        await ExpandTreeToPathAsync(CurrentPath);
+    }
+
+    public async Task LoadNodeChildrenAsync(DirectoryNode node)
+    {
+        if (_sshService is null || !_sshService.IsSftpAvailable || node.HasLoadedChildren) return;
+        node.IsLoading = true;
+        try
+        {
+            var entries = await _sshService.ListDirectoryAsync(node.FullPath);
+            node.SetChildren(entries
+                .Where(f => f.IsDirectory && f.Name != ".." && !f.Name.StartsWith('.'))
+                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(f => CreateNode(f.Name, f.FullPath)));
+        }
+        catch
+        {
+            node.SetChildren([]);
+        }
+        finally
+        {
+            node.IsLoading = false;
+        }
+    }
+
+    private DirectoryNode CreateNode(string name, string fullPath)
+    {
+        var node = new DirectoryNode(name, fullPath);
+        node.ExpandRequested += n => _ = LoadNodeChildrenAsync(n);
+        return node;
+    }
+
+    private async Task ExpandTreeToPathAsync(string path)
+    {
+        if (RootNodes.Count == 0) return;
+        var current = RootNodes[0];
+        _suppressNodeNavigation = true;
+        try
+        {
+            foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!current.HasLoadedChildren) await LoadNodeChildrenAsync(current);
+                var next = current.Children.FirstOrDefault(c => c.Name == segment);
+                if (next is null) break;
+                current.IsExpanded = true;
+                current = next;
+            }
+            if (!current.HasLoadedChildren) await LoadNodeChildrenAsync(current);
+            SelectedNode = current;
+            current.IsSelected = true;
+        }
+        finally
+        {
+            _suppressNodeNavigation = false;
+        }
+    }
+
+    partial void OnSelectedNodeChanged(DirectoryNode? value)
+    {
+        if (value is null || _suppressNodeNavigation || value.IsPlaceholder) return;
+        if (value.FullPath == CurrentPath) return;
+        _ = NavigateToPathAsync(value.FullPath);
+    }
+
+    partial void OnCurrentPathChanged(string value) => PathInput = value;
+
+    public async Task NavigateToPathAsync(string path, bool recordHistory = true)
+    {
+        if (_sshService is null || !_sshService.IsSftpAvailable || string.IsNullOrWhiteSpace(path)) return;
+        if (recordHistory && !string.IsNullOrEmpty(CurrentPath) && CurrentPath != path)
+        {
+            _backHistory.Push(CurrentPath);
+            NavigateBackCommand.NotifyCanExecuteChanged();
+        }
+        CurrentPath = path;
+        await RefreshDirectoryAsync();
+        await ExpandTreeToPathAsync(path);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanNavigateBack))]
+    private async Task NavigateBackAsync()
+    {
+        if (_backHistory.Count == 0) return;
+        var path = _backHistory.Pop();
+        NavigateBackCommand.NotifyCanExecuteChanged();
+        await NavigateToPathAsync(path, recordHistory: false);
+    }
+
+    private bool CanNavigateBack() => _backHistory.Count > 0;
+
+    [RelayCommand]
+    private async Task NavigateUpAsync()
+    {
+        var parent = Path.GetDirectoryName(CurrentPath.TrimEnd('/'))?.Replace("\\", "/");
+        if (string.IsNullOrEmpty(parent)) parent = "/";
+        if (parent == CurrentPath) return;
+        await NavigateToPathAsync(parent);
+    }
+
+    [RelayCommand]
+    private async Task NavigateToInputAsync()
+    {
+        var path = PathInput?.Trim();
+        if (string.IsNullOrEmpty(path)) return;
+        await NavigateToPathAsync(path);
+    }
+
+    public async Task CreateDirectoryAsync(string name)
+    {
+        if (_sshService is null || !_sshService.IsSftpAvailable || string.IsNullOrWhiteSpace(name)) return;
+        var newPath = $"{CurrentPath.TrimEnd('/')}/{name.Trim()}";
+        try
+        {
+            await _sshService.CreateDirectoryAsync(newPath);
+            await RefreshDirectoryAsync();
+            StatusMessage = $"Folder created: {name}";
+        }
+        catch (Exception ex) { StatusMessage = $"Create folder failed: {ex.Message}"; }
+    }
+
+    public async Task RenameAsync(RemoteFile file, string newName)
+    {
+        if (_sshService is null || !_sshService.IsSftpAvailable || string.IsNullOrWhiteSpace(newName)) return;
+        var parent = Path.GetDirectoryName(file.FullPath.TrimEnd('/'))?.Replace("\\", "/") ?? "/";
+        var newPath = $"{parent.TrimEnd('/')}/{newName.Trim()}";
+        try
+        {
+            await _sshService.RenameAsync(file.FullPath, newPath);
+            await RefreshDirectoryAsync();
+            StatusMessage = $"Renamed to: {newName}";
+        }
+        catch (Exception ex) { StatusMessage = $"Rename failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    private void SetExplorerViewMode(object? mode)
+    {
+        if (mode is string s && int.TryParse(s, out var m)) ExplorerViewMode = m;
+        else if (mode is int i) ExplorerViewMode = i;
     }
 
     [RelayCommand]
@@ -412,10 +603,10 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         if (file is null || _sshService is null || !_sshService.IsSftpAvailable) return;
         if (file.IsDirectory)
         {
-            CurrentPath = file.Name == ".."
+            var target = file.Name == ".."
                 ? (Path.GetDirectoryName(CurrentPath.TrimEnd('/'))?.Replace("\\", "/") ?? "/")
                 : file.FullPath;
-            await RefreshDirectoryAsync();
+            await NavigateToPathAsync(target);
         }
     }
 
@@ -546,6 +737,10 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     {
         if (_settingsService is not null)
             _settingsService.SettingsChanged -= OnSettingsChanged;
+
+        Disposed?.Invoke(this);
+
+        SystemMonitor.Dispose();
 
         foreach (var (localPath, (_, watcher)) in _watchedFiles)
         {

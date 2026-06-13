@@ -6,6 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              x:Class="T.UI.Views.Dialogs.SessionEditorDialog"
+             x:Name="EditorRoot"
              x:DataType="models:SshSession">
 
     <StackPanel Spacing="8" MinWidth="400">
@@ -16,7 +17,7 @@
         <TextBox Text="{Binding Host}" 
                  Watermark="Host" />
         
-        <ui:NumberBox Value="{Binding Port}" 
+        <ui:FANumberBox Value="{Binding Port}" 
                       Minimum="1" 
                       Maximum="65535"
                       SpinButtonPlacementMode="Inline" 
@@ -69,7 +70,24 @@
                  Watermark="Private Key Password (if encrypted)"
                  PasswordChar="●" 
                  RevealPassword="False"/>
-        
+
+        <!-- Proxy / Jump Host -->
+        <StackPanel Spacing="4">
+            <TextBlock Text="Connect via (jump host, optional)"
+                       Opacity="0.7"/>
+            <ComboBox x:Name="ProxyJumpCombo"
+                      HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding #EditorRoot.AvailableProxySessions}"
+                      SelectedValue="{Binding ProxyJumpSessionId}"
+                      SelectedValueBinding="{Binding Id}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:SshSession">
+                        <TextBlock Text="{Binding Name, FallbackValue='None (direct connection)'}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+        </StackPanel>
+
         <!-- Description -->
         <TextBox Text="{Binding Description}" 
                  Watermark="Description"

@@ -53,14 +53,14 @@ public partial class MainWindowViewModel(
         var dialogContent = _serviceProvider.GetRequiredService<PermissionDialog>();
         dialogContent.DataContext = vm;
 
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = "Permissions", PrimaryButtonText = "Apply", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
-        if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
             await _sessionsTree.ActiveSession.ChangePermissionsAsync(vm.ToOctal());
     }
 
@@ -69,10 +69,10 @@ public partial class MainWindowViewModel(
     {
         if (Host is null) return;
 
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = "About", CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Close,
+            DefaultButton = FAContentDialogButton.Close,
             Content = _serviceProvider.GetRequiredService<AboutDialog>()
         };
 

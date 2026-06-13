@@ -1,12 +1,20 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using System.Collections.Generic;
 using T.Models;
 
 namespace T.UI.Views.Dialogs;
 
 public partial class SessionEditorDialog : UserControl
 {
+    /// <summary>
+    /// Saved sessions that can be selected as the SSH jump host (ProxyJump) for
+    /// the session currently being edited. Set by the caller before showing the
+    /// dialog. A leading "None" entry (null) represents a direct connection.
+    /// </summary>
+    public List<SshSession> AvailableProxySessions { get; } = [];
+
     public SessionEditorDialog()
     {
         InitializeComponent();

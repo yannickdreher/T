@@ -7,11 +7,11 @@ namespace T.UI.Services;
 public static class DialogService
 {
     /// <summary>
-    /// Shows a ContentDialog on the given host window.
-    /// Returns the ContentDialogResult (Primary, Secondary, or None for Close).
+    /// Shows a FAContentDialog on the given host window.
+    /// Returns the FAContentDialogResult (Primary, Secondary, or None for Close).
     /// </summary>
-    public static async Task<ContentDialogResult> ShowAsync(
-        ContentDialog dialog, 
+    public static async Task<FAContentDialogResult> ShowAsync(
+        FAContentDialog dialog, 
         Window host)
     {
         return await dialog.ShowAsync(host);
@@ -27,16 +27,16 @@ public static class DialogService
         string primaryText = "Delete",
         string closeText = "Cancel")
     {
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = title,
             Content = message,
             PrimaryButtonText = primaryText,
             CloseButtonText = closeText,
-            DefaultButton = ContentDialogButton.Close
+            DefaultButton = FAContentDialogButton.Close
         };
 
         var result = await dialog.ShowAsync(host);
-        return result == ContentDialogResult.Primary;
+        return result == FAContentDialogResult.Primary;
     }
 }

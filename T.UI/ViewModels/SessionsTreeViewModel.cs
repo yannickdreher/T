@@ -209,14 +209,18 @@ public partial class SessionsTreeViewModel : ViewModelBase
         var dialogContent = _serviceProvider.GetRequiredService<SessionEditorDialog>();
         dialogContent.DataContext = session;
 
-        var dialog = new ContentDialog
+        dialogContent.AvailableProxySessions.Add(null!);
+        foreach (var s in Sessions)
+            dialogContent.AvailableProxySessions.Add(s);
+
+        var dialog = new FAContentDialog
         {
             Title = "Session", PrimaryButtonText = "Save", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
-        if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
             Sessions.Add(session);
             await _storageService.AddSessionAsync(session);
@@ -235,20 +239,25 @@ public partial class SessionsTreeViewModel : ViewModelBase
             Port = SelectedSession.Port, Username = SelectedSession.Username,
             Password = SelectedSession.Password, PrivateKeyPath = SelectedSession.PrivateKeyPath,
             PrivateKeyPassword = SelectedSession.PrivateKeyPassword,
-            FolderId = SelectedSession.FolderId, Description = SelectedSession.Description
+            FolderId = SelectedSession.FolderId, Description = SelectedSession.Description,
+            ProxyJumpSessionId = SelectedSession.ProxyJumpSessionId
         };
 
         var dialogContent = _serviceProvider.GetRequiredService<SessionEditorDialog>();
         dialogContent.DataContext = copy;
 
-        var dialog = new ContentDialog
+        dialogContent.AvailableProxySessions.Add(null!);
+        foreach (var s in Sessions.Where(s => s.Id != copy.Id))
+            dialogContent.AvailableProxySessions.Add(s);
+
+        var dialog = new FAContentDialog
         {
             Title = "Session", PrimaryButtonText = "Save", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
-        if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
             var index = Sessions.IndexOf(SelectedSession);
             if (index >= 0) Sessions[index] = copy;
@@ -270,14 +279,14 @@ public partial class SessionsTreeViewModel : ViewModelBase
         var dialogContent = _serviceProvider.GetRequiredService<FolderEditorDialog>();
         dialogContent.DataContext = folder;
 
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = "Folder", PrimaryButtonText = "Save", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
-        if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
             Folders.Add(folder);
             await _storageService.AddFolderAsync(folder);
@@ -293,14 +302,14 @@ public partial class SessionsTreeViewModel : ViewModelBase
         var dialogContent = _serviceProvider.GetRequiredService<FolderEditorDialog>();
         dialogContent.DataContext = selected.Folder;
 
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = "Folder", PrimaryButtonText = "Save", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
-        if (await dialog.ShowAsync(Host) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
         {
             await _storageService.UpdateFolderAsync(selected.Folder);
             BuildTree();

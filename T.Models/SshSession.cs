@@ -14,6 +14,14 @@ public partial class SshSession : ObservableObject
     [ObservableProperty] private string _privateKeyPassword = "";
     [ObservableProperty] private string? _folderId;
     [ObservableProperty] private string _description = "";
+
+    /// <summary>
+    /// Optional Id of another saved <see cref="SshSession"/> that acts as an SSH
+    /// jump host (ProxyJump). When set, the connection is tunneled through that
+    /// session instead of connecting to <see cref="Host"/> directly.
+    /// </summary>
+    [ObservableProperty] private string? _proxyJumpSessionId;
+
     [ObservableProperty] private ConnectionStatus _connectionStatus = ConnectionStatus.Disconnected;
 
     public bool IsConnected => ConnectionStatus == ConnectionStatus.Connected;

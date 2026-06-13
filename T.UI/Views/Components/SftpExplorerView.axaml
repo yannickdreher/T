@@ -1,0 +1,281 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:T.UI.ViewModels"
+			 xmlns:models="using:T.UI.Models"
+			 xmlns:ui="using:FluentAvalonia.UI.Controls"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+			 x:Class="T.UI.Views.Components.SftpExplorerView"
+			 x:DataType="vm:SessionViewModel">
+
+	<Design.DataContext>
+		<vm:SessionViewModel/>
+	</Design.DataContext>
+
+	<UserControl.Styles>
+		<Style Selector="Button.tool">
+			<Setter Property="Background" Value="Transparent"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+			<Setter Property="Padding" Value="7"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+		<Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+		</Style>
+		<Style Selector="Button.tool:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+		</Style>
+		<Style Selector="Button.tool.active">
+			<Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+		</Style>
+		<Style Selector="Button.tool PathIcon">
+			<Setter Property="Width" Value="15"/>
+			<Setter Property="Height" Value="15"/>
+		</Style>
+	</UserControl.Styles>
+
+	<Grid RowDefinitions="Auto,*">
+
+		<!-- ═══ Toolbar ═══ -->
+		<Border Grid.Row="0"
+				Background="{DynamicResource LayerFillColorDefaultBrush}"
+				BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+				BorderThickness="0,0,0,1"
+				Padding="6,4">
+			<Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+
+				<!-- Navigation -->
+				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
+					<Button Classes="tool" Command="{Binding NavigateBackCommand}" ToolTip.Tip="Back">
+						<PathIcon Data="{StaticResource chevron_left_regular}"/>
+					</Button>
+					<Button Classes="tool" Command="{Binding NavigateUpCommand}"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Up">
+						<PathIcon Data="{StaticResource chevron_up_regular}"/>
+					</Button>
+					<Button Classes="tool" Command="{Binding RefreshDirectoryCommand}"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Refresh">
+						<PathIcon Data="{StaticResource arrow_sync_regular}"/>
+					</Button>
+				</StackPanel>
+
+				<!-- Path -->
+				<TextBox Grid.Column="1"
+						 Text="{Binding PathInput}"
+						 Watermark="/path/to/directory"
+						 IsEnabled="{Binding IsConnected}"
+						 VerticalAlignment="Center"
+						 KeyDown="OnPathKeyDown"/>
+
+				<!-- View switcher -->
+				<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+					<Button Classes="tool"
+							Classes.active="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=0}"
+							Command="{Binding SetExplorerViewModeCommand}" CommandParameter="0"
+							ToolTip.Tip="Details view">
+						<PathIcon Data="{StaticResource table_regular}"/>
+					</Button>
+					<Button Classes="tool"
+							Classes.active="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=1}"
+							Command="{Binding SetExplorerViewModeCommand}" CommandParameter="1"
+							ToolTip.Tip="List view">
+						<PathIcon Data="{StaticResource text_bullet_list_regular}"/>
+					</Button>
+					<Button Classes="tool"
+							Classes.active="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=2}"
+							Command="{Binding SetExplorerViewModeCommand}" CommandParameter="2"
+							ToolTip.Tip="Icons view">
+						<PathIcon Data="{StaticResource grid_regular}"/>
+					</Button>
+				</StackPanel>
+
+				<!-- Actions -->
+				<StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2">
+					<Border Width="1" Margin="2,4"
+							Background="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+					<Button Classes="tool" Click="OnNewFolderClick"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="New folder">
+						<PathIcon Data="{StaticResource folder_add_regular}"/>
+					</Button>
+					<Button Classes="tool" Click="OnUploadClick"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Upload">
+						<PathIcon Data="{StaticResource document_arrow_up_regular}"/>
+					</Button>
+					<Button Classes="tool" Command="{Binding DownloadFileCommand}"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Download">
+						<PathIcon Data="{StaticResource document_arrow_down_regular}"/>
+					</Button>
+					<Button Classes="tool" Click="OnRenameClick"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Rename">
+						<PathIcon Data="{StaticResource document_edit_regular}"/>
+					</Button>
+					<Button Classes="tool" Command="{Binding DeleteFileCommand}"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Delete">
+						<PathIcon Data="{StaticResource delete_regular}"/>
+					</Button>
+					<Button Classes="tool"
+							Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ShowPermissionDialogCommand}"
+							IsEnabled="{Binding IsConnected}" ToolTip.Tip="Permissions">
+						<PathIcon Data="{StaticResource key_regular}"/>
+					</Button>
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<!-- ═══ Content ═══ -->
+		<Grid Grid.Row="1" ColumnDefinitions="240,Auto,*">
+
+			<!-- Folder tree -->
+			<Border Grid.Column="0"
+					Background="{DynamicResource LayerFillColorDefaultBrush}">
+				<TreeView ItemsSource="{Binding RootNodes}"
+						  SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
+						  SelectionMode="Single"
+						  ScrollViewer.HorizontalScrollBarVisibility="Auto">
+					<TreeView.Styles>
+						<Style Selector="TreeViewItem" x:DataType="models:DirectoryNode">
+							<Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+							<Setter Property="Padding" Value="2"/>
+							<Setter Property="MinHeight" Value="26"/>
+						</Style>
+					</TreeView.Styles>
+					<TreeView.ItemTemplate>
+						<TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:DirectoryNode">
+							<StackPanel Orientation="Horizontal" Spacing="6">
+								<PathIcon Data="{StaticResource folder_regular}"
+										  Foreground="#E8B339"
+										  Width="14" Height="14"/>
+								<TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+							</StackPanel>
+						</TreeDataTemplate>
+					</TreeView.ItemTemplate>
+				</TreeView>
+			</Border>
+
+			<GridSplitter Grid.Column="1" ResizeDirection="Columns"
+						  Background="Transparent"/>
+
+			<!-- File pane -->
+			<Panel Grid.Column="2">
+
+				<!-- Disconnected info -->
+				<ui:FAInfoBar IsOpen="{Binding !IsConnected}"
+							IsClosable="False"
+							Severity="Informational"
+							VerticalAlignment="Top"
+							Margin="8"
+							Message="{Binding FileExplorerStatus}"/>
+
+				<!-- Details view -->
+				<DataGrid IsVisible="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=0}"
+						  ItemsSource="{Binding RemoteFiles}"
+						  SelectedItem="{Binding SelectedFile}"
+						  AutoGenerateColumns="False"
+						  CanUserReorderColumns="True"
+						  CanUserResizeColumns="True"
+						  CanUserSortColumns="True"
+						  IsReadOnly="True"
+						  GridLinesVisibility="None"
+						  HeadersVisibility="Column"
+						  DoubleTapped="OnFileDoubleTapped"
+						  ScrollViewer.VerticalScrollBarVisibility="Auto"
+						  ScrollViewer.HorizontalScrollBarVisibility="Auto">
+					<DataGrid.ContextMenu>
+						<ContextMenu>
+							<MenuItem Header="Download" Command="{Binding DownloadFileCommand}"/>
+							<MenuItem Header="Rename" Click="OnRenameClick"/>
+							<MenuItem Header="Delete" Command="{Binding DeleteFileCommand}"/>
+							<Separator/>
+							<MenuItem Header="Permissions…"
+									  Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ShowPermissionDialogCommand}"/>
+							<Separator/>
+							<MenuItem Header="New folder…" Click="OnNewFolderClick"/>
+							<MenuItem Header="Upload…" Click="OnUploadClick"/>
+							<MenuItem Header="Refresh" Command="{Binding RefreshDirectoryCommand}"/>
+						</ContextMenu>
+					</DataGrid.ContextMenu>
+					<DataGrid.Columns>
+						<DataGridTemplateColumn Header="" Width="36" CanUserResize="False">
+							<DataGridTemplateColumn.CellTemplate>
+								<DataTemplate>
+									<PathIcon Data="{Binding IconKey, Converter={StaticResource ResourceKeyToGeometryConverter}}"
+											  Foreground="{Binding IconColor}"
+											  Width="14" Height="14"
+											  HorizontalAlignment="Center"/>
+								</DataTemplate>
+							</DataGridTemplateColumn.CellTemplate>
+						</DataGridTemplateColumn>
+						<DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" MinWidth="140"/>
+						<DataGridTextColumn Header="Size" Binding="{Binding SizeDisplay}" Width="90"/>
+						<DataGridTextColumn Header="Modified" Binding="{Binding LastModified, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" Width="140"/>
+						<DataGridTextColumn Header="Permissions" Binding="{Binding Permissions}" Width="90"/>
+					</DataGrid.Columns>
+				</DataGrid>
+
+				<!-- List view -->
+				<ListBox IsVisible="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=1}"
+						 ItemsSource="{Binding RemoteFiles}"
+						 SelectedItem="{Binding SelectedFile}"
+						 DoubleTapped="OnFileDoubleTapped"
+						 Background="Transparent">
+					<ListBox.Styles>
+						<Style Selector="ListBoxItem">
+							<Setter Property="Padding" Value="8,3"/>
+							<Setter Property="MinHeight" Value="26"/>
+						</Style>
+					</ListBox.Styles>
+					<ListBox.ItemTemplate>
+						<DataTemplate>
+							<StackPanel Orientation="Horizontal" Spacing="8">
+								<PathIcon Data="{Binding IconKey, Converter={StaticResource ResourceKeyToGeometryConverter}}"
+										  Foreground="{Binding IconColor}"
+										  Width="14" Height="14"/>
+								<TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+							</StackPanel>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+
+				<!-- Icons view -->
+				<ListBox IsVisible="{Binding ExplorerViewMode, Converter={StaticResource EqualsConverter}, ConverterParameter=2}"
+						 ItemsSource="{Binding RemoteFiles}"
+						 SelectedItem="{Binding SelectedFile}"
+						 DoubleTapped="OnFileDoubleTapped"
+						 Background="Transparent"
+						 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+					<ListBox.ItemsPanel>
+						<ItemsPanelTemplate>
+							<WrapPanel Orientation="Horizontal"/>
+						</ItemsPanelTemplate>
+					</ListBox.ItemsPanel>
+					<ListBox.Styles>
+						<Style Selector="ListBoxItem">
+							<Setter Property="Padding" Value="4"/>
+							<Setter Property="Margin" Value="2"/>
+							<Setter Property="CornerRadius" Value="6"/>
+						</Style>
+					</ListBox.Styles>
+					<ListBox.ItemTemplate>
+						<DataTemplate>
+							<StackPanel Width="92" Spacing="6" Margin="0,8">
+								<PathIcon Data="{Binding IconKey, Converter={StaticResource ResourceKeyToGeometryConverter}}"
+										  Foreground="{Binding IconColor}"
+										  Width="32" Height="32"
+										  HorizontalAlignment="Center"/>
+								<TextBlock Text="{Binding Name}"
+										   TextAlignment="Center"
+										   TextWrapping="Wrap"
+										   TextTrimming="CharacterEllipsis"
+										   MaxLines="2"
+										   FontSize="11"/>
+							</StackPanel>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+			</Panel>
+		</Grid>
+	</Grid>
+</UserControl>

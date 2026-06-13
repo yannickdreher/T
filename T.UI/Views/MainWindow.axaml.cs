@@ -4,14 +4,13 @@ using T.UI.ViewModels;
 
 namespace T.UI.Views;
 
-public partial class MainWindow : AppWindow
+public partial class MainWindow : FAAppWindow
 {
     public MainWindow()
     {
         InitializeComponent();
 
         TitleBar.ExtendsContentIntoTitleBar = true;
-        TitleBar.TitleBarHitTestType = TitleBarHitTestType.Complex;
         TitleBar.Height = 32;
     }
 
@@ -20,7 +19,7 @@ public partial class MainWindow : AppWindow
         DataContext = viewModel;
     }
 
-    private void OnTabCloseRequested(TabView sender, TabViewTabCloseRequestedEventArgs args)
+    private void OnTabCloseRequested(FATabView sender, FATabViewTabCloseRequestedEventArgs args)
     {
         if (DataContext is MainWindowViewModel vm && args.Item is SessionViewModel session)
             vm.SessionsTree.CloseSessionCommand.Execute(session);

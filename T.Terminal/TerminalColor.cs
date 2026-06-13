@@ -35,9 +35,16 @@ public readonly struct TerminalColor : IEquatable<TerminalColor>
     public bool IsDefault => _value < 0;
     public bool IsPalette => _value >= 0 && _value < 256;
     public bool IsRgb => _value >= 0x1000000;
-    
+
     public int PaletteIndex => IsPalette ? _value : -1;
-    
+
+    /// <summary>
+    /// Returns the bright variant for the 8 basic ANSI colors (bold-as-bright rendering).
+    /// All other colors are returned unchanged.
+    /// </summary>
+    public TerminalColor ToBright() =>
+        _value is >= 0 and < 8 ? new TerminalColor(_value + 8) : this;
+
     public (byte R, byte G, byte B) ToRgb()
     {
         if (IsRgb)

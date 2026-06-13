@@ -11,12 +11,13 @@ using T.UI.ViewModels;
 
 namespace T.UI.Views.Components;
 
-public partial class TerminalView : UserControl
+public partial class TerminalView : UserControl, IDisposable
 {
     private SessionViewModel? _currentVm;
     private readonly TerminalControl? _terminal;
     private readonly TerminalStatsOverlay? _stats;
     private readonly DispatcherTimer _statsTimer;
+    private bool _isDisposed;
 
     public TerminalView()
     {
@@ -56,6 +57,7 @@ public partial class TerminalView : UserControl
         _currentVm.OutputReceived += OnOutputReceived;
         _currentVm.PropertyChanged += OnViewModelPropertyChanged;
         _currentVm.TerminalSettings.PropertyChanged += OnSettingsChanged;
+        _currentVm.Disposed += OnSessionDisposed;
 
         ApplySettings();
 
@@ -70,6 +72,7 @@ public partial class TerminalView : UserControl
         _currentVm.OutputReceived -= OnOutputReceived;
         _currentVm.PropertyChanged -= OnViewModelPropertyChanged;
         _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
+        _currentVm.Disposed -= OnSessionDisposed;
 
         _statsTimer.Stop();
         if (_stats != null) _stats.IsVisible = false;
@@ -77,10 +80,35 @@ public partial class TerminalView : UserControl
         _currentVm = null;
     }
 
+    private void OnSessionDisposed(SessionViewModel vm) => Dispose();
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        DetachViewModel();
+        _terminal?.Shutdown();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        // The terminal may have been hidden in a background tab. Resume the stats
+        // sampling now that it is visible again. VM subscriptions are kept alive
+        // across tab switches so terminal output never stops flowing.
+        UpdateStatsOverlay();
+    }
+
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        DetachViewModel();
+
+        // Switching to another tab detaches this view. Only pause the stats
+        // sampling - the session wiring stays connected. Full teardown happens
+        // when the session itself is disposed (see OnSessionDisposed).
+        _statsTimer.Stop();
     }
 
     private void ApplySettings()

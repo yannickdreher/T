@@ -1,4 +1,4 @@
-﻿<wnd:AppWindow xmlns="https://github.com/avaloniaui"
+﻿<wnd:FAAppWindow xmlns="https://github.com/avaloniaui"
 			   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 			   xmlns:vm="using:T.UI.ViewModels"
 			   xmlns:components="using:T.UI.Views.Components"
@@ -20,9 +20,9 @@
 		<vm:MainWindowViewModel/>
 	</Design.DataContext>
 
-	<wnd:AppWindow.Resources>
+	<wnd:FAAppWindow.Resources>
 		<converters:ConnectionStatusToBrushConverter x:Key="StatusToBrush"/>
-	</wnd:AppWindow.Resources>
+	</wnd:FAAppWindow.Resources>
 
 	<Grid RowDefinitions="32,*" Margin="8,0,8,8">
 
@@ -57,53 +57,66 @@
 
 					<!-- Session Content (bound to ActiveSession) -->
 					<Grid Grid.Row="0" IsVisible="{Binding SessionsTree.HasOpenSessions}">
-						<Grid RowDefinitions="Auto,*">
-
-							<!-- Tab Headers -->
-							<ui:TabView Grid.Row="0"
-										TabItems="{Binding SessionsTree.OpenSessions}"
-										SelectedItem="{Binding SessionsTree.ActiveSession}"
-										TabCloseRequested="OnTabCloseRequested"
-										IsAddTabButtonVisible="False"
-										TabWidthMode="SizeToContent"
-										CloseButtonOverlayMode="OnPointerOver"
-										TabStripFooter="{x:Null}">
-								<ui:TabView.TabItemTemplate>
-									<DataTemplate x:DataType="vm:SessionViewModel">
-										<StackPanel Orientation="Horizontal" Spacing="6">
-											<Ellipse Width="8" Height="8"
-													 Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"/>
-											<TextBlock Text="{Binding Session.Name}"/>
-										</StackPanel>
-									</DataTemplate>
-								</ui:TabView.TabItemTemplate>
-							</ui:TabView>
-
-							<!-- Alle Sessions übereinander -->
-							<ItemsControl Grid.Row="1" ItemsSource="{Binding SessionsTree.OpenSessions}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <Grid/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:SessionViewModel">
-                                        <ContentControl Content="{Binding}" IsVisible="{Binding IsActive}"/>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-						</Grid>
+						<!-- FATabView hosts both the tab strip and the selected session body.
+							 Session content resolves through SessionViewCache, which reuses the
+							 same SessionView per session so the live terminal survives tab switches. -->
+						<ui:FATabView TabItemsSource="{Binding SessionsTree.OpenSessions}"
+									SelectedItem="{Binding SessionsTree.ActiveSession}"
+									TabCloseRequested="OnTabCloseRequested"
+									IsAddTabButtonVisible="False"
+									TabWidthMode="SizeToContent"
+									CloseButtonOverlayMode="OnPointerOver"
+									TabStripFooter="{x:Null}">
+							<ui:FATabView.TabItemTemplate>
+								<DataTemplate x:DataType="vm:SessionViewModel">
+									<ui:FATabViewItem Content="{Binding}">
+										<ui:FATabViewItem.Header>
+											<StackPanel Orientation="Horizontal" Spacing="6">
+												<Ellipse Width="8" Height="8"
+														 Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"/>
+												<TextBlock Text="{Binding Session.Name}"/>
+											</StackPanel>
+										</ui:FATabViewItem.Header>
+									</ui:FATabViewItem>
+								</DataTemplate>
+							</ui:FATabView.TabItemTemplate>
+						</ui:FATabView>
 					</Grid>
 
 					<!-- Welcome Screen (no sessions open) -->
 					<StackPanel IsVisible="{Binding !SessionsTree.HasOpenSessions}"
-								HorizontalAlignment="Center" VerticalAlignment="Center">
-						<svg:Svg Path="/Assets/logo.svg" Width="160" Height="160"/>
-						<TextBlock Text="Select a session and click 'Connect'"
-								   Opacity="0.7" HorizontalAlignment="Center"/>
+								HorizontalAlignment="Center" VerticalAlignment="Center"
+								Spacing="10">
+						<svg:Svg Path="/Assets/logo.svg" Width="140" Height="140" Margin="0,0,0,8"/>
+						<TextBlock Text="Welcome"
+								   FontSize="24"
+								   FontWeight="SemiBold"
+								   HorizontalAlignment="Center"/>
+						<TextBlock Text="Select a session in the sidebar and connect to get started."
+								   Opacity="0.6"
+								   FontSize="13"
+								   HorizontalAlignment="Center"/>
+						<Border Background="{DynamicResource LayerFillColorDefaultBrush}"
+								BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+								BorderThickness="1"
+								CornerRadius="8"
+								Padding="16,10"
+								Margin="0,12,0,0"
+								HorizontalAlignment="Center">
+							<StackPanel Spacing="6">
+								<StackPanel Orientation="Horizontal" Spacing="8">
+									<PathIcon Data="{StaticResource window_console_regular}" Width="13" Height="13" Opacity="0.7"/>
+									<TextBlock Text="Terminal with remote system monitor" FontSize="12" Opacity="0.7"/>
+								</StackPanel>
+								<StackPanel Orientation="Horizontal" Spacing="8">
+									<PathIcon Data="{StaticResource folder_regular}" Width="13" Height="13" Opacity="0.7"/>
+									<TextBlock Text="SFTP explorer with folder tree and file views" FontSize="12" Opacity="0.7"/>
+								</StackPanel>
+							</StackPanel>
+						</Border>
 					</StackPanel>
 				</Grid>
 			</Border>
 		</Grid>
 	</Grid>
-</wnd:AppWindow>
+</wnd:FAAppWindow>

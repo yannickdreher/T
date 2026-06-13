@@ -3,7 +3,7 @@ using FluentAvalonia.UI.Windowing;
 
 namespace T.UI.Views;
 
-public partial class SettingsWindow : AppWindow
+public partial class SettingsWindow : FAAppWindow
 {
     public SettingsWindow()
     {

@@ -15,6 +15,7 @@ public partial class SessionsPanel : UserControl
     private ITreeNode? _draggedNode;
     private TreeViewItem? _draggedItem;
     private TreeViewItem? _lastDropTarget;
+    private PointerPressedEventArgs? _dragPressArgs;
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 8;
@@ -103,6 +104,7 @@ public partial class SessionsPanel : UserControl
             {
                 _draggedNode = node;
                 _draggedItem = item;
+                _dragPressArgs = e;
                 _dragStartPoint = point.Position;
                 _isDragging = false;
             }
@@ -111,7 +113,7 @@ public partial class SessionsPanel : UserControl
 
     private async void OnTreeViewPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggedNode is null || _draggedItem is null) return;
+        if (_draggedNode is null || _draggedItem is null || _dragPressArgs is null) return;
 
         var currentPoint = e.GetCurrentPoint(this);
         if (!currentPoint.Properties.IsLeftButtonPressed)
@@ -127,7 +129,7 @@ public partial class SessionsPanel : UserControl
         _isDragging = true;
         _draggedItem.Classes.Add("drag-source");
 
-        await DragDrop.DoDragDropAsync(e, new DataTransfer(), DragDropEffects.Move);
+        await DragDrop.DoDragDropAsync(_dragPressArgs, new DataTransfer(), DragDropEffects.Move);
 
         _draggedItem.Classes.Remove("drag-source");
         ClearDropTarget();
@@ -236,6 +238,7 @@ public partial class SessionsPanel : UserControl
     {
         _draggedNode = null;
         _draggedItem = null;
+        _dragPressArgs = null;
         _isDragging = false;
     }
 

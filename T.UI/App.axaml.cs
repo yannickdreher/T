@@ -1,7 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Data.Core.Plugins;
 using Avalonia.Markup.Xaml;
 using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,8 +35,6 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            DisableAvaloniaDataAnnotationValidation();
-
             var collection = new ServiceCollection();
             collection.AddCommonServices();
 
@@ -77,18 +74,18 @@ public partial class App : Application
         var view = _serviceProvider.GetRequiredService<UpdateDialog>();
         view.DataContext = vm;
 
-        var dialog = new ContentDialog
+        var dialog = new FAContentDialog
         {
             Title = "Update Available",
             PrimaryButtonText = "Install",
             CloseButtonText = "Later",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = FAContentDialogButton.Primary,
             Content = view
         };
 
-        if (await dialog.ShowAsync(owner) == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync(owner) == FAContentDialogResult.Primary)
         {
-            var progressDialog = new ContentDialog
+            var progressDialog = new FAContentDialog
             {
                 Title = "Installing Update",
                 Content = "Downloading and installing update...\nThe application will restart automatically.",
@@ -99,12 +96,5 @@ public partial class App : Application
             _ = progressDialog.ShowAsync(owner);
             await vm.InstallAsync();
         }
-    }
-
-    private static void DisableAvaloniaDataAnnotationValidation()
-    {
-        var toRemove = BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
-        foreach (var plugin in toRemove)
-            BindingPlugins.DataValidators.Remove(plugin);
     }
 }

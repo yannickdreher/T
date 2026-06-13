@@ -10,39 +10,33 @@ namespace T.UI.Services
     /// Thread-safe Least-Recently-Used (LRU) cache for <see cref="FormattedText"/>.
     /// Purpose: dramatically reduce allocations and GC pressure by reusing previously
     /// created <see cref="FormattedText"/> instances for identical render parameters
-    /// (text, font, size, weight, color).
+    /// (text, font, size, weight, style, color).
     /// 
     /// Characteristics:
     /// - Bounded capacity to avoid unbounded memory growth.
     /// - O(1) lookup via dictionary and O(1) update of recentness via a linked list.
+    /// - Allocation-free lookups: the key is a value type (no string concatenation per query).
     /// - Safe for simple concurrent access using an internal lock.
-    /// 
-    /// Tuning:
-    /// - Increase capacity for workloads with many unique strings (more memory, fewer misses).
-    /// - Decrease capacity to reduce memory footprint; accepts more cache churn.
     /// </summary>
     public sealed class FormattedTextCache
     {
         private readonly int _capacity;
-        private readonly Dictionary<string, LinkedListNode<CacheEntry>> _map;
+        private readonly Dictionary<CacheKey, LinkedListNode<CacheEntry>> _map;
         private readonly LinkedList<CacheEntry> _lru;
         private readonly Lock _lock = new();
 
         /// <summary>
+        /// Value-type cache key: avoids per-lookup string allocations entirely.
+        /// Typeface is a struct wrapping interned font data, so equality is cheap.
+        /// </summary>
+        private readonly record struct CacheKey(string Text, Typeface Typeface, double FontSize, Color Color);
+
+        /// <summary>
         /// Represents a cached entry: the lookup key and the cached <see cref="FormattedText"/>.
         /// </summary>
-        /// <param name="key">Unique key identifying the text + render parameters.</param>
-        /// <param name="value">The cached <see cref="FormattedText"/> instance.</param>
-        private sealed class CacheEntry(string key, FormattedText value)
+        private sealed class CacheEntry(CacheKey key, FormattedText value)
         {
-            /// <summary>
-            /// Cache lookup key (composed of text + font + size + weight + color).
-            /// </summary>
-            public string Key { get; } = key;
-
-            /// <summary>
-            /// Cached FormattedText instance.
-            /// </summary>
+            public CacheKey Key { get; } = key;
             public FormattedText Value { get; } = value;
         }
 
@@ -74,63 +68,39 @@ namespace T.UI.Services
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
 
             _capacity = capacity;
-            _map = new Dictionary<string, LinkedListNode<CacheEntry>>(capacity);
+            _map = new Dictionary<CacheKey, LinkedListNode<CacheEntry>>(capacity);
             _lru = new LinkedList<CacheEntry>();
-        }
-
-        /// <summary>
-        /// Build a compact, stable cache key from the text and rendering parameters.
-        /// The key includes the raw text, font family, font size, bold flag and color.
-        /// Using a single string key keeps dictionary lookups efficient and deterministic.
-        /// </summary>
-        /// <param name="text">Rendered text.</param>
-        /// <param name="fontFamily">Font family name.</param>
-        /// <param name="fontSize">Font size.</param>
-        /// <param name="bold">True if bold weight.</param>
-        /// <param name="color">Foreground color value.</param>
-        /// <returns>Concatenated string key suitable for dictionary lookup.</returns>
-        private static string MakeKey(string text, string fontFamily, double fontSize, bool bold, Color color)
-        {
-            // Use a separator that is unlikely to appear in normal terminal text
-            return string.Concat(text, '\u001F', fontFamily, '\u001F', fontSize.ToString(CultureInfo.InvariantCulture),
-                                 '\u001F', bold ? "1" : "0", '\u001F', color.ToUInt32().ToString());
         }
 
         /// <summary>
         /// Retrieve a cached <see cref="FormattedText"/> for the given parameters, or create one
         /// if absent. Access refreshes the entry's recency (moves it to the head of LRU).
-        /// 
-        /// Thread-safety: method is protected by an internal lock to ensure map/list consistency.
+        /// Lookup itself performs no heap allocations.
         /// </summary>
-        /// <param name="text">The string to render.</param>
-        /// <param name="typeface">Typeface describing family/weight (bold detection is based on <see cref="Typeface.Weight"/>).</param>
-        /// <param name="fontSize">Font size to use for <see cref="FormattedText"/> creation.</param>
-        /// <param name="color">Foreground color for the text.</param>
-        /// <returns>Existing or newly created <see cref="FormattedText"/> instance.</returns>
         public FormattedText GetOrCreate(string text, Typeface typeface, double fontSize, Color color)
         {
             if (string.IsNullOrEmpty(text))
             {
-                // Return a minimal FormattedText for empty strings to keep behavior consistent.
                 return new FormattedText(string.Empty, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, fontSize, Brushes.White);
             }
 
-            var fontFamily = typeface.FontFamily?.ToString() ?? "default";
-            var bold = typeface.Weight == FontWeight.Bold;
-            var key = MakeKey(text, fontFamily, fontSize, bold, color);
+            var key = new CacheKey(text, typeface, fontSize, color);
 
             lock (_lock)
             {
                 if (_map.TryGetValue(key, out var node))
                 {
-                    // Move to front = mark as most recently used
-                    _lru.Remove(node);
-                    _lru.AddFirst(node);
-                    Interlocked.Increment(ref _hits);
+                    // Move to front = mark as most recently used (skip if already first)
+                    if (!ReferenceEquals(_lru.First, node))
+                    {
+                        _lru.Remove(node);
+                        _lru.AddFirst(node);
+                    }
+                    _hits++;
                     return node.Value.Value;
                 }
 
-                Interlocked.Increment(ref _misses);
+                _misses++;
 
                 // Create a new FormattedText and cache it.
                 var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, fontSize, new SolidColorBrush(color));
@@ -140,7 +110,7 @@ namespace T.UI.Services
                 _lru.AddFirst(newNode);
                 _map[key] = newNode;
 
-                Interlocked.Increment(ref _inserts);
+                _inserts++;
 
                 if (_map.Count > _capacity)
                 {
@@ -148,7 +118,7 @@ namespace T.UI.Services
                     var last = _lru.Last!;
                     _lru.RemoveLast();
                     _map.Remove(last.Value.Key);
-                    Interlocked.Increment(ref _evictions);
+                    _evictions++;
                     // Evicted FormattedText becomes eligible for GC.
                 }
 

@@ -31,12 +31,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private bool[] _tabStops = InitTabStops(Math.Max(1024, width));
 
     // Current attributes
-    private TerminalColor _foreground = TerminalColor.White;
+    private TerminalColor _foreground = TerminalColor.Default;
     private TerminalColor _background = TerminalColor.Default;
     private TerminalAttribute _attributes = TerminalAttribute.None;
-    
+
     // Cached template for fast writing (avoids struct construction overhead in loops)
-    private TerminalCharacter _charTemplate = new() { Foreground = TerminalColor.White, Background = TerminalColor.Default };
+    private TerminalCharacter _charTemplate = new() { Foreground = TerminalColor.Default, Background = TerminalColor.Default };
     
     // Saved cursor states
     private readonly CursorState _savedCursor = new();
@@ -49,7 +49,23 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private bool _lineFeedNewLine;
     private bool _cursorVisible = true;
     private bool _applicationCursorKeys;
+    private bool _applicationKeypad;
     private bool _bracketedPasteMode;
+    private bool _alternateScroll = true;
+
+    // Mouse tracking
+    private MouseTrackingMode _mouseTracking = MouseTrackingMode.None;
+    private bool _sgrMouseMode;
+
+    // Character sets (G0/G1, GL shifts via SI/SO)
+    private enum CharsetMode { Ascii, DecSpecialGraphics }
+    private CharsetMode _g0Charset = CharsetMode.Ascii;
+    private CharsetMode _g1Charset = CharsetMode.Ascii;
+    private bool _glIsG1; // false = G0 active (SI), true = G1 active (SO)
+    private char _charsetDesignator;
+
+    // Last printed character (for REP / CSI b)
+    private char _lastPrintedChar = ' ';
     
     private enum ParserState { Ground, Escape, CsiEntry, CsiParam, CsiIntermediate, OscString, DcsEntry, Charset }
     private ParserState _state = ParserState.Ground;
@@ -73,10 +89,27 @@ public class VirtualTerminal(int width = 80, int height = 24)
     public TerminalBuffer Buffer => _buffer;
     public IReadOnlyList<TerminalLine> Scrollback => _scrollback;
     public int MaxScrollback { get; set; } = 10000;
-    
+
+    /// <summary>DECCKM: application cursor keys mode (ESC O instead of CSI for arrows).</summary>
+    public bool ApplicationCursorKeys => _applicationCursorKeys;
+    /// <summary>DECKPAM/DECKPNM: application keypad mode.</summary>
+    public bool ApplicationKeypad => _applicationKeypad;
+    /// <summary>Mode 2004: bracketed paste.</summary>
+    public bool BracketedPasteMode => _bracketedPasteMode;
+    /// <summary>True while the alternate screen buffer (vim, htop, tmux, ...) is active.</summary>
+    public bool IsAlternateScreen => _alternateBuffer != null;
+    /// <summary>Mode 1007: wheel events are translated to arrow keys on the alternate screen.</summary>
+    public bool AlternateScrollMode => _alternateScroll;
+    /// <summary>Active mouse tracking mode (modes 1000/1002/1003).</summary>
+    public MouseTrackingMode MouseTracking => _mouseTracking;
+    /// <summary>Mode 1006: SGR extended mouse coordinate reporting.</summary>
+    public bool SgrMouseMode => _sgrMouseMode;
+
     public event Action? ScreenChanged;
     public event Action<string>? TitleChanged;
     public event Action<string>? SendData;
+    /// <summary>DECSCUSR: 0/1=blink block, 2=block, 3=blink underline, 4=underline, 5=blink bar, 6=bar.</summary>
+    public event Action<int>? CursorStyleChanged;
 
     private static bool[] InitTabStops(int size)
     {
@@ -129,13 +162,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     public void Feed(string text)
     {
-        _dirtyTop = int.MaxValue;
-        _dirtyBottom = int.MinValue;
-        
-        ProcessTextFast(text.AsSpan());
-        
-        if (_dirtyTop <= _dirtyBottom)
-            ScreenChanged?.Invoke();
+        Feed(text.AsSpan());
     }
 
     public void Feed(ReadOnlySpan<char> chars)
@@ -143,7 +170,16 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _dirtyTop = int.MaxValue;
         _dirtyBottom = int.MinValue;
 
+        int prevRow = _cursorRow;
+        int prevCol = _cursorColumn;
+
         ProcessTextFast(chars);
+
+        // Cursor-only movement must also trigger a repaint of the affected rows
+        if (_cursorRow != prevRow || _cursorColumn != prevCol)
+        {
+            MarkDirty(Math.Min(prevRow, _cursorRow), Math.Max(prevRow, _cursorRow));
+        }
 
         if (_dirtyTop <= _dirtyBottom)
             ScreenChanged?.Invoke();
@@ -151,18 +187,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     public void Feed(ReadOnlySpan<byte> data)
     {
-        _dirtyTop = int.MaxValue;
-        _dirtyBottom = int.MinValue;
-
         int charCount = _utf8Decoder.GetCharCount(data, false);
         if (_charBuffer.Length < charCount)
             Array.Resize(ref _charBuffer, Math.Max(charCount, _charBuffer.Length * 2));
 
         int charsUsed = _utf8Decoder.GetChars(data, _charBuffer, false);
-        ProcessTextFast(_charBuffer.AsSpan(0, charsUsed));
-        
-        if (_dirtyTop <= _dirtyBottom)
-            ScreenChanged?.Invoke();
+        Feed(_charBuffer.AsSpan(0, charsUsed));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -218,7 +248,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case ParserState.CsiParam:
             case ParserState.CsiIntermediate: ProcessCsiState(c); break;
             case ParserState.OscString: ProcessOscState(c); break;
-            case ParserState.Charset: _state = ParserState.Ground; break;
+            case ParserState.Charset: ProcessCharsetState(c); break;
         }
     }
 
@@ -248,7 +278,8 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case '\t': Tab(); break;
             case '\a': break; // Bell
             case (char)127: break; // DEL
-            case '\x0E' or '\x0F': break; // Shift IN/OUT
+            case '\x0E': _glIsG1 = true; break;  // SO: select G1
+            case '\x0F': _glIsG1 = false; break; // SI: select G0
         }
     }
 
@@ -267,7 +298,10 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 _state = ParserState.OscString;
                 _oscBuffer.Clear();
                 break;
-            case '(' or ')' or '*' or '+': _state = ParserState.Charset; break;
+            case '(' or ')' or '*' or '+':
+                _charsetDesignator = c;
+                _state = ParserState.Charset;
+                break;
             case '7': SaveCursor(); _state = ParserState.Ground; break;
             case '8': RestoreCursor(); _state = ParserState.Ground; break;
             case 'D': LineFeed(); _state = ParserState.Ground; break;
@@ -275,9 +309,27 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case 'M': ReverseIndex(); _state = ParserState.Ground; break;
             case 'c': FullReset(); _state = ParserState.Ground; break;
             case 'H': SetTabStop(); _state = ParserState.Ground; break;
-            case '=' or '>': _state = ParserState.Ground; break;
+            case '=': _applicationKeypad = true; _state = ParserState.Ground; break;
+            case '>': _applicationKeypad = false; _state = ParserState.Ground; break;
             default: _state = ParserState.Ground; break;
         }
+    }
+
+    private void ProcessCharsetState(char c)
+    {
+        var charset = c switch
+        {
+            '0' => CharsetMode.DecSpecialGraphics,
+            _ => CharsetMode.Ascii
+        };
+
+        switch (_charsetDesignator)
+        {
+            case '(': _g0Charset = charset; break;
+            case ')': _g1Charset = charset; break;
+        }
+
+        _state = ParserState.Ground;
     }
 
     private void ProcessCsiState(char c)
@@ -353,6 +405,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case 'S': ScrollUp(GetParam(0)); break;
             case 'T': ScrollDown(GetParam(0)); break;
             case 'd': CursorLineAbsolute(GetParam(0)); break;
+            case 'b': RepeatLastCharacter(GetParam(0)); break;
             case 'm': SelectGraphicRendition(); break;
             case 'r': SetScrollRegion(GetParam(0, 1), GetParam(1, _height)); break;
             case 's': SaveCursor(); break;
@@ -362,7 +415,16 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case 'n': DeviceStatusReport(); break;
             case 'c': DeviceAttributes(); break;
             case 'g': ClearTabStop(GetParam(0, 0)); break;
+            case 'q':
+                if (_intermediate == ' ') CursorStyleChanged?.Invoke(GetParam(0, 1));
+                break;
         }
+    }
+
+    private void RepeatLastCharacter(int count)
+    {
+        count = Math.Min(count, _width * _height);
+        for (int i = 0; i < count; i++) PutChar(_lastPrintedChar, alreadyMapped: true);
     }
 
     private void ExecuteOsc()
@@ -398,6 +460,8 @@ public class VirtualTerminal(int width = 80, int height = 24)
             return;
         }
 
+        bool graphics = (_glIsG1 ? _g1Charset : _g0Charset) == CharsetMode.DecSpecialGraphics;
+
         // DELAYED WRAP: If we are at _width, wrap now before writing (xenl behavior)
         if (_cursorColumn >= _width)
         {
@@ -423,10 +487,17 @@ public class VirtualTerminal(int width = 80, int height = 24)
         {
             for (int i = 0; i < text.Length; i++)
             {
-                cell.Char = text[i];
+                char ch = text[i];
+                if (graphics) ch = MapDecSpecialGraphics(ch);
+                cell.Char = ch;
                 line[_cursorColumn + i] = cell;
             }
-            
+            if (text.Length > 0)
+            {
+                char last = text[^1];
+                _lastPrintedChar = graphics ? MapDecSpecialGraphics(last) : last;
+            }
+
             _cursorColumn += text.Length;
             // DO NOT WRAP HERE. Allow cursor to sit at _width to avoid double-spacing.
         }
@@ -438,7 +509,9 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 int len = remainingInLine;
                 for (int i = 0; i < len; i++)
                 {
-                    cell.Char = text[i];
+                    char ch = text[i];
+                    if (graphics) ch = MapDecSpecialGraphics(ch);
+                    cell.Char = ch;
                     line[_cursorColumn + i] = cell;
                 }
                 _cursorColumn = _width - 1;
@@ -455,10 +528,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
                     
                     for (int i = 0; i < chunk; i++)
                     {
-                        cell.Char = text[processed + i];
+                        char ch = text[processed + i];
+                        if (graphics) ch = MapDecSpecialGraphics(ch);
+                        cell.Char = ch;
                         line[startCol + i] = cell;
                     }
-                    
+
                     processed += chunk;
                     _cursorColumn += chunk;
                     
@@ -474,8 +549,11 @@ public class VirtualTerminal(int width = 80, int height = 24)
         }
     }
 
-    private void PutChar(char c)
+    private void PutChar(char c, bool alreadyMapped = false)
     {
+        if (!alreadyMapped && (_glIsG1 ? _g1Charset : _g0Charset) == CharsetMode.DecSpecialGraphics)
+            c = MapDecSpecialGraphics(c);
+
         // DELAYED WRAP CHECK
         if (_cursorColumn >= _width)
         {
@@ -496,13 +574,52 @@ public class VirtualTerminal(int width = 80, int height = 24)
             _buffer[_cursorRow].InsertCharacters(_cursorColumn, 1);
 
         var line = _buffer[_cursorRow];
-        
+
         var cell = _charTemplate;
         cell.Char = c;
         line[_cursorColumn] = cell;
 
+        _lastPrintedChar = c;
         _cursorColumn++;
     }
+
+    /// <summary>Maps DEC Special Graphics (ESC ( 0) characters to their Unicode box-drawing equivalents.</summary>
+    private static char MapDecSpecialGraphics(char c) => c switch
+    {
+        '_' => ' ',
+        '`' => '\u25C6', // ◆ diamond
+        'a' => '\u2592', // ▒ checkerboard
+        'b' => '\u2409', // ␉ HT
+        'c' => '\u240C', // ␌ FF
+        'd' => '\u240D', // ␍ CR
+        'e' => '\u240A', // ␊ LF
+        'f' => '\u00B0', // ° degree
+        'g' => '\u00B1', // ± plus-minus
+        'h' => '\u2424', // ␤ NL
+        'i' => '\u240B', // ␋ VT
+        'j' => '\u2518', // ┘
+        'k' => '\u2510', // ┐
+        'l' => '\u250C', // ┌
+        'm' => '\u2514', // └
+        'n' => '\u253C', // ┼
+        'o' => '\u23BA', // ⎺
+        'p' => '\u23BB', // ⎻
+        'q' => '\u2500', // ─
+        'r' => '\u23BC', // ⎼
+        's' => '\u23BD', // ⎽
+        't' => '\u251C', // ├
+        'u' => '\u2524', // ┤
+        'v' => '\u2534', // ┴
+        'w' => '\u252C', // ┬
+        'x' => '\u2502', // │
+        'y' => '\u2264', // ≤
+        'z' => '\u2265', // ≥
+        '{' => '\u03C0', // π
+        '|' => '\u2260', // ≠
+        '}' => '\u00A3', // £
+        '~' => '\u00B7', // ·
+        _ => c
+    };
 
     private void LineFeed()
     {
@@ -510,21 +627,25 @@ public class VirtualTerminal(int width = 80, int height = 24)
         {
             if (_scrollTop == 0 && _alternateBuffer == null)
             {
-                _scrollback.Add(_buffer[0].Clone());
-                
+                // Move the top line into scrollback without cloning; the buffer gets a fresh line
+                _scrollback.Add(_buffer.ScrollUpDetach(_scrollTop, _scrollBottom));
+
                 if (_scrollback.Count > MaxScrollback + 100)
                 {
                     _scrollback.RemoveRange(0, 100);
                 }
             }
-            _buffer.ScrollUp(_scrollTop, _scrollBottom);
+            else
+            {
+                _buffer.ScrollUp(_scrollTop, _scrollBottom);
+            }
             MarkDirty(_scrollTop, _scrollBottom);
         }
         else
         {
             _cursorRow++;
         }
-        
+
         if (_lineFeedNewLine)
             _cursorColumn = 0;
     }
@@ -730,7 +851,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
                         }
                     }
                     break;
-                case 39: _foreground = TerminalColor.White; break;
+                case 39: _foreground = TerminalColor.Default; break;
                 case >= 40 and <= 47: _background = new TerminalColor(p - 40); break;
                 case 48:
                     i++;
@@ -759,7 +880,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void ResetAttributes()
     {
-        _foreground = TerminalColor.White;
+        _foreground = TerminalColor.Default;
         _background = TerminalColor.Default;
         _attributes = TerminalAttribute.None;
     }
@@ -775,9 +896,15 @@ public class VirtualTerminal(int width = 80, int height = 24)
                     case 1: _applicationCursorKeys = enabled; break;
                     case 6: _originMode = enabled; break;
                     case 7: _autoWrap = enabled; break;
-                    case 25: _cursorVisible = enabled; break;
+                    case 25: _cursorVisible = enabled; MarkDirty(_cursorRow); break;
                     case 47: case 1047: SwitchBuffer(enabled, false); break;
                     case 1049: SwitchBuffer(enabled, true); break;
+                    case 9: _mouseTracking = enabled ? MouseTrackingMode.X10 : MouseTrackingMode.None; break;
+                    case 1000: _mouseTracking = enabled ? MouseTrackingMode.Normal : MouseTrackingMode.None; break;
+                    case 1002: _mouseTracking = enabled ? MouseTrackingMode.ButtonEvent : MouseTrackingMode.None; break;
+                    case 1003: _mouseTracking = enabled ? MouseTrackingMode.AnyEvent : MouseTrackingMode.None; break;
+                    case 1006: _sgrMouseMode = enabled; break;
+                    case 1007: _alternateScroll = enabled; break;
                     case 2004: _bracketedPasteMode = enabled; break;
                 }
             }
@@ -857,8 +984,8 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void DeviceAttributes()
     {
-        if (_intermediate == '>') SendData?.Invoke("\x1B[>0;0;0c"); 
-        else SendData?.Invoke("\x1B[?62;c"); 
+        if (_intermediate == '>') SendData?.Invoke("\x1B[>0;276;0c");
+        else SendData?.Invoke("\x1B[?62;1;2;6;9;15;22c");
     }
 
     private void SetTabStop() 
@@ -885,14 +1012,22 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _autoWrap = true;
         _insertMode = false;
         _cursorVisible = true;
+        _applicationCursorKeys = false;
+        _applicationKeypad = false;
+        _bracketedPasteMode = false;
+        _mouseTracking = MouseTrackingMode.None;
+        _sgrMouseMode = false;
+        _g0Charset = CharsetMode.Ascii;
+        _g1Charset = CharsetMode.Ascii;
+        _glIsG1 = false;
         ResetAttributes();
         _buffer.Clear();
         _alternateBuffer = null;
         _scrollback.Clear();
-        
+
         Array.Clear(_tabStops, 0, _tabStops.Length);
         for (int i = 8; i < _tabStops.Length; i += 8) _tabStops[i] = true;
-        
+
         UpdateTemplate();
         MarkDirty(0, _height - 1);
     }

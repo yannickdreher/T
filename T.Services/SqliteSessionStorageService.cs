@@ -6,7 +6,7 @@ namespace T.Services;
 
 public class SqliteSessionStorageService : ISessionStorageService
 {
-    private const int SCHEMA_VERSION = 3;
+    private const int SCHEMA_VERSION = 4;
     private readonly string _connectionString;
     private readonly IEncryptionService _encryptionService;
 
@@ -47,6 +47,7 @@ public class SqliteSessionStorageService : ISessionStorageService
                 PrivateKeyPassword TEXT NOT NULL DEFAULT '',
                 FolderId          TEXT,
                 Description       TEXT NOT NULL,
+                ProxyJumpSessionId TEXT,
                 FOREIGN KEY (FolderId) REFERENCES Folders(Id) ON DELETE SET NULL
             );
             """;
@@ -96,6 +97,20 @@ public class SqliteSessionStorageService : ISessionStorageService
             }
 
             SetUserVersion(connection, 3);
+        }
+
+        if (currentVersion < 4)
+        {
+            // Migration: ProxyJumpSessionId Spalte hinzufügen (SSH Jump Host / ProxyJump)
+            if (!ColumnExists(connection, "Sessions", "ProxyJumpSessionId"))
+            {
+                using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE Sessions ADD COLUMN ProxyJumpSessionId TEXT;";
+
+                alter.ExecuteNonQuery();
+            }
+
+            SetUserVersion(connection, 4);
         }
 
         if (currentVersion < SCHEMA_VERSION)
@@ -161,7 +176,7 @@ public class SqliteSessionStorageService : ISessionStorageService
 
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description FROM Sessions;";
+        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId FROM Sessions;";
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -176,7 +191,7 @@ public class SqliteSessionStorageService : ISessionStorageService
     {
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description FROM Sessions WHERE Id = @Id;";
+        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId FROM Sessions WHERE Id = @Id;";
         cmd.Parameters.AddWithValue("@Id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -188,8 +203,8 @@ public class SqliteSessionStorageService : ISessionStorageService
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Sessions (Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description)
-            VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description);
+            INSERT INTO Sessions (Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId)
+            VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description, @ProxyJumpSessionId);
             """;
         AddSessionParameters(cmd, session);
         await cmd.ExecuteNonQueryAsync();
@@ -203,7 +218,7 @@ public class SqliteSessionStorageService : ISessionStorageService
             UPDATE Sessions
             SET Name = @Name, Host = @Host, Port = @Port, Username = @Username,
                 Password = @Password, PrivateKeyPath = @PrivateKeyPath, PrivateKeyPassword = @PrivateKeyPassword,
-                FolderId = @FolderId, Description = @Description
+                FolderId = @FolderId, Description = @Description, ProxyJumpSessionId = @ProxyJumpSessionId
             WHERE Id = @Id;
             """;
         AddSessionParameters(cmd, session);
@@ -296,7 +311,8 @@ public class SqliteSessionStorageService : ISessionStorageService
         PrivateKeyPath = reader.GetString(6),
         PrivateKeyPassword = _encryptionService.Decrypt(reader.GetString(7)),
         FolderId = reader.IsDBNull(8) ? null : reader.GetString(8),
-        Description = reader.GetString(9)
+        Description = reader.GetString(9),
+        ProxyJumpSessionId = reader.IsDBNull(10) ? null : reader.GetString(10)
     };
 
     private static Folder ReadFolder(SqliteDataReader reader) => new()
@@ -319,6 +335,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         cmd.Parameters.AddWithValue("@PrivateKeyPassword", _encryptionService.Encrypt(session.PrivateKeyPassword));
         cmd.Parameters.AddWithValue("@FolderId", (object?)session.FolderId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Description", session.Description);
+        cmd.Parameters.AddWithValue("@ProxyJumpSessionId", (object?)session.ProxyJumpSessionId ?? DBNull.Value);
     }
 
     private static void AddFolderParameters(SqliteCommand cmd, Folder folder)

@@ -6,8 +6,8 @@
              x:DataType="vm:HostKeyDialogViewModel">
 
     <StackPanel Spacing="16">
-        <!-- Warning InfoBar -->
-        <ui:InfoBar Severity="Warning"
+        <!-- Warning FAInfoBar -->
+        <ui:FAInfoBar Severity="Warning"
                     IsOpen="True"
                     IsClosable="False"
                     Title="Host Key Verification"
@@ -66,15 +66,15 @@
             </Grid>
         </StackPanel>
 
-        <!-- Security Notice InfoBar -->
-        <ui:InfoBar Severity="Informational"
+        <!-- Security Notice FAInfoBar -->
+        <ui:FAInfoBar Severity="Informational"
                     IsOpen="True"
                     IsClosable="False"
                     Title="Security Notice"
                     Message="Please verify this fingerprint matches the one provided by your server administrator. If you're unsure, contact your administrator before continuing."/>
 
-        <!-- Auto-save Notice InfoBar -->
-        <ui:InfoBar Severity="Informational"
+        <!-- Auto-save Notice FAInfoBar -->
+        <ui:FAInfoBar Severity="Informational"
                     IsOpen="True"
                     IsClosable="False"
                     Message="If you accept, this key will be automatically saved to ~/.ssh/known_hosts"/>

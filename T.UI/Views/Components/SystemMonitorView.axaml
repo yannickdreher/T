@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:T.UI.ViewModels"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="28"
+			 x:Class="T.UI.Views.Components.SystemMonitorView"
+			 x:DataType="vm:SystemMonitorViewModel"
+			 IsVisible="{Binding IsAvailable}">
+
+	<Design.DataContext>
+		<vm:SystemMonitorViewModel/>
+	</Design.DataContext>
+
+	<UserControl.Styles>
+		<Style Selector="TextBlock.metricLabel">
+			<Setter Property="FontSize" Value="11"/>
+			<Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+		<Style Selector="TextBlock.metricValue">
+			<Setter Property="FontSize" Value="11"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+		<Style Selector="ProgressBar.metric">
+			<Setter Property="Width" Value="56"/>
+			<Setter Property="Height" Value="5"/>
+			<Setter Property="MinWidth" Value="56"/>
+			<Setter Property="Minimum" Value="0"/>
+			<Setter Property="Maximum" Value="100"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+	</UserControl.Styles>
+
+	<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+
+		<!-- CPU -->
+		<StackPanel Orientation="Horizontal" Spacing="6"
+					ToolTip.Tip="Remote CPU usage">
+			<TextBlock Classes="metricLabel" Text="CPU"/>
+			<ProgressBar Classes="metric" Value="{Binding CpuPercent}"/>
+			<TextBlock Classes="metricValue" Text="{Binding CpuPercent, StringFormat='{}{0:0}%'}" MinWidth="32"/>
+		</StackPanel>
+
+		<!-- RAM -->
+		<StackPanel Orientation="Horizontal" Spacing="6"
+					ToolTip.Tip="{Binding RamDisplay}">
+			<TextBlock Classes="metricLabel" Text="RAM"/>
+			<ProgressBar Classes="metric" Value="{Binding RamPercent}"/>
+			<TextBlock Classes="metricValue" Text="{Binding RamPercent, StringFormat='{}{0:0}%'}" MinWidth="32"/>
+		</StackPanel>
+
+		<!-- Network -->
+		<StackPanel Orientation="Horizontal" Spacing="6"
+					ToolTip.Tip="Remote network throughput">
+			<TextBlock Classes="metricLabel" Text="NET"/>
+			<TextBlock Classes="metricValue" Foreground="{DynamicResource SystemFillColorSuccessBrush}">
+				<Run Text="↓"/><Run Text="{Binding NetworkDownDisplay}"/>
+			</TextBlock>
+			<TextBlock Classes="metricValue" Foreground="{DynamicResource SystemFillColorCautionBrush}">
+				<Run Text="↑"/><Run Text="{Binding NetworkUpDisplay}"/>
+			</TextBlock>
+		</StackPanel>
+
+		<!-- Disk -->
+		<StackPanel Orientation="Horizontal" Spacing="6"
+					ToolTip.Tip="{Binding DiskDisplay}">
+			<TextBlock Classes="metricLabel" Text="DISK"/>
+			<ProgressBar Classes="metric" Value="{Binding DiskPercent}"/>
+			<TextBlock Classes="metricValue" Text="{Binding DiskPercent, StringFormat='{}{0:0}%'}" MinWidth="32"/>
+		</StackPanel>
+	</StackPanel>
+</UserControl>

@@ -27,4 +27,7 @@ public interface ISshService : IDisposable
     Task UploadFileAsync(string localPath, string remotePath, CancellationToken cancellationToken = default);
     Task DeleteAsync(string path, bool isDirectory);
     Task ChangePermissionsAsync(string path, short permissions);
+    Task CreateDirectoryAsync(string path);
+    Task RenameAsync(string oldPath, string newPath);
+    Task<string?> RunCommandAsync(string commandText, CancellationToken cancellationToken = default);
 }

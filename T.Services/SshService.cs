@@ -15,10 +15,16 @@ public class SshService : ISshService
     private readonly SshSession _session;
     private readonly ISettingsService _settingsService;
     private readonly IKnownHostsService _knownHostsService;
+    private readonly ISessionStorageService _sessionStorageService;
     private SshClient? _sshClient;
     private SftpClient? _sftpClient;
     private ShellStream? _shellStream;
     private CancellationTokenSource? _reconnectCts;
+
+    // SSH jump host / ProxyJump tunnel
+    private SshClient? _proxyClient;
+    private ForwardedPortLocal? _proxyForward;
+    private SshSession? _proxySession;
 
     // Terminal dimensions
     private uint _terminalColumns;
@@ -48,6 +54,7 @@ public class SshService : ISshService
         SshSession session,
         ISettingsService settingsService,
         IKnownHostsService knownHostsService,
+        ISessionStorageService sessionStorageService,
         uint columns = 120,
         uint rows = 30,
         uint pixelWidth = 960,
@@ -56,6 +63,7 @@ public class SshService : ISshService
         _session = session;
         _settingsService = settingsService;
         _knownHostsService = knownHostsService;
+        _sessionStorageService = sessionStorageService;
         _terminalColumns = columns;
         _terminalRows = rows;
         _pixelWidth = pixelWidth;
@@ -88,7 +96,7 @@ public class SshService : ISshService
             UpdateSessionCredentials(credentials);
         }
 
-        InitializeClients();
+        await InitializeClientsAsync(cancellationToken);
 
         try
         {
@@ -103,7 +111,7 @@ public class SshService : ISshService
                 if (credentials != null)
                 {
                     UpdateSessionCredentials(credentials);
-                    InitializeClients();
+                    await InitializeClientsAsync(cancellationToken);
                     await ConnectInternalAsync(cancellationToken);
                 }
                 else
@@ -131,10 +139,128 @@ public class SshService : ISshService
             _session.PrivateKeyPassword = credentials.PrivateKeyPassword;
     }
 
-    private void InitializeClients()
+    /// <summary>
+    /// Establishes the SSH jump host tunnel when the session references a proxy
+    /// jump session. Connects a dedicated proxy <see cref="SshClient"/> and opens
+    /// a local port forward to the real target host. Does nothing for direct
+    /// connections.
+    /// </summary>
+    private async Task SetupProxyTunnelAsync(CancellationToken cancellationToken)
+    {
+        TearDownProxyTunnel();
+
+        if (string.IsNullOrWhiteSpace(_session.ProxyJumpSessionId))
+            return;
+
+        var jumpSession = await _sessionStorageService.GetSessionByIdAsync(_session.ProxyJumpSessionId);
+        if (jumpSession == null)
+        {
+            throw new InvalidOperationException(
+                $"The configured jump host (session id '{_session.ProxyJumpSessionId}') could not be found.");
+        }
+
+        _proxySession = jumpSession;
+
+        var settings = _settingsService.Current;
+        var proxyConnectionInfo = CreateConnectionInfo(jumpSession);
+        proxyConnectionInfo.Timeout = TimeSpan.FromSeconds(settings.General.ConnectionTimeout);
+
+        _proxyClient = new SshClient(proxyConnectionInfo)
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(settings.General.KeepAliveInterval)
+        };
+        _proxyClient.HostKeyReceived += OnProxyHostKeyReceived;
+
+        ShellDataReceived?.Invoke($"\r\n\u2192 Connecting through jump host {jumpSession.Name} ({jumpSession.Host})...\r\n");
+
+        await _proxyClient.ConnectAsync(cancellationToken);
+
+        _proxyForward = new ForwardedPortLocal("127.0.0.1", 0, _session.Host, (uint)_session.Port);
+        _proxyClient.AddForwardedPort(_proxyForward);
+        _proxyForward.Start();
+    }
+
+    /// <summary>
+    /// Stops and disposes the jump host tunnel (forwarded port + proxy client).
+    /// Safe to call when no tunnel is active.
+    /// </summary>
+    private void TearDownProxyTunnel()
+    {
+        if (_proxyForward != null)
+        {
+            try { if (_proxyForward.IsStarted) _proxyForward.Stop(); } catch { }
+            try { _proxyForward.Dispose(); } catch { }
+            _proxyForward = null;
+        }
+
+        if (_proxyClient != null)
+        {
+            _proxyClient.HostKeyReceived -= OnProxyHostKeyReceived;
+            try { if (_proxyClient.IsConnected) _proxyClient.Disconnect(); } catch { }
+            try { _proxyClient.Dispose(); } catch { }
+            _proxyClient = null;
+        }
+
+        _proxySession = null;
+    }
+
+    private void OnProxyHostKeyReceived(object? sender, HostKeyEventArgs e)
+    {
+        var proxySession = _proxySession;
+        if (proxySession == null)
+        {
+            e.CanTrust = false;
+            return;
+        }
+
+        if (_knownHostsService.IsHostKeyKnown(proxySession.Host, proxySession.Port, e.HostKey))
+        {
+            e.CanTrust = true;
+            return;
+        }
+
+        if (HostKeyVerificationRequired != null)
+        {
+            var hostKeyInfo = new HostKeyInfo
+            {
+                Host = proxySession.Host,
+                Port = proxySession.Port,
+                KeyType = e.HostKeyName,
+                Fingerprint = e.FingerPrintSHA256,
+                FingerprintMD5 = e.FingerPrintMD5
+            };
+
+            var trusted = HostKeyVerificationRequired.Invoke(hostKeyInfo).GetAwaiter().GetResult();
+            e.CanTrust = trusted;
+
+            if (trusted)
+            {
+                _knownHostsService.AddHostKey(proxySession.Host, proxySession.Port, e.HostKeyName, e.HostKey);
+            }
+        }
+        else
+        {
+            e.CanTrust = false;
+        }
+    }
+
+    private async Task InitializeClientsAsync(CancellationToken cancellationToken)
     {
         var settings = _settingsService.Current;
-        var connectionInfo = CreateConnectionInfo(_session);
+
+        // Establish the jump host tunnel first (no-op for direct connections),
+        // then point the real clients at the forwarded local endpoint.
+        await SetupProxyTunnelAsync(cancellationToken);
+
+        string? hostOverride = null;
+        int? portOverride = null;
+        if (_proxyForward != null)
+        {
+            hostOverride = "127.0.0.1";
+            portOverride = (int)_proxyForward.BoundPort;
+        }
+
+        var connectionInfo = CreateConnectionInfo(_session, hostOverride, portOverride);
         connectionInfo.Timeout = TimeSpan.FromSeconds(settings.General.ConnectionTimeout);
 
         _sshClient?.ErrorOccurred -= OnSshClientError;
@@ -178,6 +304,8 @@ public class SshService : ISshService
         {
             _sftpClient.Disconnect();
         }
+
+        TearDownProxyTunnel();
 
         StatusChanged?.Invoke(ConnectionStatus.Disconnected);
     }
@@ -376,7 +504,7 @@ public class SshService : ISshService
         {
             await pipeline.ExecuteAsync(async cancellationToken =>
             {
-                InitializeClients();
+                await InitializeClientsAsync(cancellationToken);
                 await ConnectInternalAsync(cancellationToken);
             }, cts.Token);
         }
@@ -543,7 +671,36 @@ public class SshService : ISshService
         });
     }
 
-    private static ConnectionInfo CreateConnectionInfo(SshSession session)
+    public async Task CreateDirectoryAsync(string path)
+    {
+        if (_sftpClient == null || !_sftpClient.IsConnected) return;
+        await Task.Run(() => _sftpClient.CreateDirectory(path));
+    }
+
+    public async Task RenameAsync(string oldPath, string newPath)
+    {
+        if (_sftpClient == null || !_sftpClient.IsConnected) return;
+        await Task.Run(() => _sftpClient.RenameFile(oldPath, newPath));
+    }
+
+    public async Task<string?> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
+    {
+        if (_sshClient == null || !_sshClient.IsConnected) return null;
+
+        try
+        {
+            using var command = _sshClient.CreateCommand(commandText);
+            command.CommandTimeout = TimeSpan.FromSeconds(10);
+            var result = await Task.Run(command.Execute, cancellationToken);
+            return command.ExitStatus == 0 ? result : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static ConnectionInfo CreateConnectionInfo(SshSession session, string? hostOverride = null, int? portOverride = null)
     {
         var username = string.IsNullOrWhiteSpace(session.Username) 
             ? "anonymous" 
@@ -582,7 +739,10 @@ public class SshService : ISshService
         authMethods.Add(new KeyboardInteractiveAuthenticationMethod(username));
         authMethods.Add(new NoneAuthenticationMethod(username));
 
-        return new ConnectionInfo(session.Host, session.Port, username, [.. authMethods]);
+        var host = string.IsNullOrEmpty(hostOverride) ? session.Host : hostOverride;
+        var port = portOverride ?? session.Port;
+
+        return new ConnectionInfo(host, port, username, [.. authMethods]);
     }
 
     private static string GetPermissionsString(SftpFileAttributes attrs)

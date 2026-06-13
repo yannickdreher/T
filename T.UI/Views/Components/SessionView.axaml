@@ -13,19 +13,61 @@
 		<vm:SessionViewModel/>
 	</Design.DataContext>
 
-	<Grid RowDefinitions="*,Auto">
-		<!-- Session Content -->
-		<Grid Grid.Row="0" ColumnDefinitions="300,Auto,*">
-			<components:FileExplorer Grid.Column="0"/>
-			<GridSplitter Grid.Column="1" ResizeDirection="Columns"/>
-			<ContentControl Grid.Column="2" x:Name="TerminalHost"/>
-		</Grid>
+	<UserControl.Styles>
+		<Style Selector="TabStrip.sessionTabs">
+			<Setter Property="Margin" Value="4,2"/>
+		</Style>
+		<Style Selector="TabStrip.sessionTabs TabStripItem">
+			<Setter Property="FontSize" Value="13"/>
+			<Setter Property="MinHeight" Value="30"/>
+			<Setter Property="Padding" Value="10,4"/>
+			<Setter Property="Margin" Value="0,0,4,0"/>
+			<Setter Property="CornerRadius" Value="4"/>
+		</Style>
+		<Style Selector="TabStrip.sessionTabs TabStripItem PathIcon">
+			<Setter Property="Width" Value="14"/>
+			<Setter Property="Height" Value="14"/>
+		</Style>
+	</UserControl.Styles>
 
-		<!-- Status Bar -->
-		<components:SessionStatusBarView Grid.Row="1"/>
+	<Grid RowDefinitions="Auto,*,Auto">
+
+		<!-- Terminal / Explorer tab strip -->
+		<Border Grid.Row="0"
+				Background="{DynamicResource LayerFillColorDefaultBrush}"
+				BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+				BorderThickness="0,0,0,1">
+			<TabStrip Classes="sessionTabs"
+					  SelectedIndex="{Binding SelectedSessionTab, Mode=TwoWay}">
+				<TabStripItem>
+					<StackPanel Orientation="Horizontal" Spacing="6">
+						<PathIcon Data="{StaticResource window_console_regular}"/>
+						<TextBlock Text="Terminal" VerticalAlignment="Center"/>
+					</StackPanel>
+				</TabStripItem>
+				<TabStripItem>
+					<StackPanel Orientation="Horizontal" Spacing="6">
+						<PathIcon Data="{StaticResource folder_regular}"/>
+						<TextBlock Text="Explorer" VerticalAlignment="Center"/>
+					</StackPanel>
+				</TabStripItem>
+			</TabStrip>
+		</Border>
+
+		<!-- Tab content: panels stay attached, visibility is toggled so the
+			 terminal keeps its session and scroll state across switches -->
+		<Panel Grid.Row="1">
+			<ContentControl x:Name="TerminalHost"
+							IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}"/>
+			<components:SftpExplorerView IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}"/>
+		</Panel>
+
+		<!-- Status Bar / Footer -->
+		<components:SessionStatusBarView Grid.Row="2"/>
 
 		<!-- Connection Overlay -->
-		<Border IsVisible="{Binding ShowOverlay, FallbackValue=False}"
+		<Border Grid.RowSpan="3"
+				IsVisible="{Binding ShowOverlay, FallbackValue=False}"
 				Background="#DD000000"
 				IsHitTestVisible="True">
 			<StackPanel HorizontalAlignment="Center"

@@ -1,125 +1,48 @@
-namespace T.VT;
+﻿namespace T.VT;
 
 /// <summary>
-/// Keyboard translation record for a single key
-/// </summary>
-public record KeyboardTranslation(
-    string? Normal = null,
-    string? Shift = null,
-    string? Control = null,
-    bool ShiftOnApplication = false
-);
-
-/// <summary>
-/// Translates keyboard input to VT100/XTerm escape sequences
-/// Based on VtNetCore by Darren Starr
+/// Translates keyboard input to VT100/XTerm escape sequences.
+/// Sequences and modifier encoding follow xterm (TERM=xterm-256color):
+/// modifier parameter = 1 + Shift(1) + Alt(2) + Ctrl(4).
 /// </summary>
 public static class KeyboardTranslations
 {
-    private static readonly Dictionary<string, KeyboardTranslation> KeyTranslations = new()
-    {
-        // Function keys
-        // | Key | Normal    | Shift     | Control   |
-        // |-----|-----------|-----------|-----------|
-        // | F1  | CSI 11~   | CSI 23~   | CSI 11~   |
-        // | F2  | CSI 12~   | CSI 24~   | CSI 12~   |
-        // ...
-        { "F1", new("\x1b[11~", "\x1b[23~", "\x1b[11~") },
-        { "F2", new("\x1b[12~", "\x1b[24~", "\x1b[12~") },
-        { "F3", new("\x1b[13~", "\x1b[25~", "\x1b[13~") },
-        { "F4", new("\x1b[14~", "\x1b[26~", "\x1b[14~") },
-        { "F5", new("\x1b[15~", "\x1b[28~", "\x1b[15~") },
-        { "F6", new("\x1b[17~", "\x1b[29~", "\x1b[17~") },
-        { "F7", new("\x1b[18~", "\x1b[31~", "\x1b[18~") },
-        { "F8", new("\x1b[19~", "\x1b[32~", "\x1b[19~") },
-        { "F9", new("\x1b[20~", "\x1b[33~", "\x1b[20~") },
-        { "F10", new("\x1b[21~", "\x1b[34~", "\x1b[21~") },
-        { "F11", new("\x1b[23~", "\x1b[23~", "\x1b[23~") },
-        { "F12", new("\x1b[24~", "\x1b[24~", "\x1b[24~") },
-        
-        // Arrow keys
-        // | Key   | Normal | Shift   | Control | Application |
-        // |-------|--------|---------|---------|-------------|
-        // | Up    | CSI A  | Esc OA  | Esc OA  | Esc OA      |
-        // | Down  | CSI B  | Esc OB  | Esc OB  | Esc OB      |
-        // | Right | CSI C  | Esc OC  | Esc OC  | Esc OC      |
-        // | Left  | CSI D  | Esc OD  | Esc OD  | Esc OD      |
-        { "Up", new("\x1b[A", "\x1bOA", "\x1bOA", ShiftOnApplication: true) },
-        { "Down", new("\x1b[B", "\x1bOB", "\x1bOB", ShiftOnApplication: true) },
-        { "Right", new("\x1b[C", "\x1bOC", "\x1bOC", ShiftOnApplication: true) },
-        { "Left", new("\x1b[D", "\x1bOD", "\x1bOD", ShiftOnApplication: true) },
-        
-        // Navigation keys
-        { "Home", new("\x1b[1~", "\x1b[1~") },
-        { "Insert", new("\x1b[2~") },
-        { "Delete", new("\x1b[3~", "\x1b[3~") },
-        { "End", new("\x1b[4~", "\x1b[4~") },
-        { "PageUp", new("\x1b[5~", "\x1b[5~") },
-        { "PageDown", new("\x1b[6~", "\x1b[6~") },
-        
-        // Special keys
-        { "Back", new("\x7f", "\b", "\x7f") },
-        { "Tab", new("\t", "\x1b[Z") },
-        { "Enter", new("\r", "\r", "\r") },
-        { "Return", new("\r", "\r", "\r") },
-        { "Escape", new("\x1b\x1b", "\x1b\x1b", "\x1b\x1b") },
-        { "Space", new(" ", " ", "\x00") },
-        
-        // Ctrl+Letter (A-Z)
-        { "A", new(Control: "\x01") },
-        { "B", new(Control: "\x02") },
-        { "C", new(Control: "\x03") },
-        { "D", new(Control: "\x04") },
-        { "E", new(Control: "\x05") },
-        { "F", new(Control: "\x06") },
-        { "G", new(Control: "\x07") },
-        { "H", new(Control: "\x08") },
-        { "I", new(Control: "\x09") },
-        { "J", new(Control: "\x0a") },
-        { "K", new(Control: "\x0b") },
-        { "L", new(Control: "\x0c") },
-        { "M", new(Control: "\x0d") },
-        { "N", new(Control: "\x0e") },
-        { "O", new(Control: "\x0f") },
-        { "P", new(Control: "\x10") },
-        { "Q", new(Control: "\x11") },
-        { "R", new(Control: "\x12") },
-        { "S", new(Control: "\x13") },
-        { "T", new(Control: "\x14") },
-        { "U", new(Control: "\x15") },
-        { "V", new(Control: "\x16") },
-        { "W", new(Control: "\x17") },
-        { "X", new(Control: "\x18") },
-        { "Y", new(Control: "\x19") },
-        { "Z", new(Control: "\x1a") },
-    };
-
     /// <summary>
-    /// Translates a key to the appropriate escape sequence
+    /// Computes the xterm modifier parameter (2..8) or 0 when no modifier is active.
     /// </summary>
-    public static byte[]? GetKeySequence(string key, bool control, bool shift, bool applicationMode)
+    private static int ModifierCode(bool shift, bool alt, bool ctrl)
     {
-        if (KeyTranslations.TryGetValue(key, out var translation))
-        {
-            string? result = null;
-            
-            if (applicationMode && translation.ShiftOnApplication && !string.IsNullOrEmpty(translation.Shift))
-                result = translation.Shift;
-            else if (shift && !string.IsNullOrEmpty(translation.Shift))
-                result = translation.Shift;
-            else if (control && !string.IsNullOrEmpty(translation.Control))
-                result = translation.Control;
-            else if (!string.IsNullOrEmpty(translation.Normal))
-                result = translation.Normal;
-            
-            return result?.Select(c => (byte)c).ToArray();
-        }
-        
-        return null;
+        int code = 0;
+        if (shift) code |= 1;
+        if (alt) code |= 2;
+        if (ctrl) code |= 4;
+        return code == 0 ? 0 : code + 1;
     }
 
     /// <summary>
-    /// Translates a ConsoleKey to the appropriate escape sequence string
+    /// Cursor keys: CSI A..D normally, SS3 A..D in application cursor key mode (DECCKM),
+    /// CSI 1;mA..D with modifiers.
+    /// </summary>
+    private static string CursorKey(char final, int mod, bool applicationMode) =>
+        mod == 0
+            ? (applicationMode ? $"\x1bO{final}" : $"\x1b[{final}")
+            : $"\x1b[1;{mod}{final}";
+
+    /// <summary>
+    /// Editing keys (Insert/Delete/PageUp/...): CSI n~ or CSI n;m~ with modifiers.
+    /// </summary>
+    private static string TildeKey(int number, int mod) =>
+        mod == 0 ? $"\x1b[{number}~" : $"\x1b[{number};{mod}~";
+
+    /// <summary>
+    /// F1-F4: SS3 P..S normally, CSI 1;mP..S with modifiers (xterm behavior).
+    /// </summary>
+    private static string Pf1To4(char final, int mod) =>
+        mod == 0 ? $"\x1bO{final}" : $"\x1b[1;{mod}{final}";
+
+    /// <summary>
+    /// Translates a ConsoleKey (+modifiers) to the escape sequence expected by the host.
+    /// Returns null when the key produces no sequence (printable text arrives via text input).
     /// </summary>
     public static string? TranslateKey(
         ConsoleKey key,
@@ -128,59 +51,95 @@ public static class KeyboardTranslations
         bool shift = false,
         bool applicationMode = false)
     {
-        var keyName = GetKeyName(key);
-        if (keyName == null) return null;
-        
-        var bytes = GetKeySequence(keyName, ctrl, shift, applicationMode);
-        if (bytes == null) return null;
-        
-        var result = new string(bytes.Select(b => (char)b).ToArray());
-        
-        // Prefix with ESC for Alt combinations
-        if (alt && !string.IsNullOrEmpty(result))
-            result = "\x1b" + result;
-        
+        int mod = ModifierCode(shift, alt, ctrl);
+
+        string? result = key switch
+        {
+            // Cursor keys
+            ConsoleKey.UpArrow => CursorKey('A', mod, applicationMode),
+            ConsoleKey.DownArrow => CursorKey('B', mod, applicationMode),
+            ConsoleKey.RightArrow => CursorKey('C', mod, applicationMode),
+            ConsoleKey.LeftArrow => CursorKey('D', mod, applicationMode),
+
+            // Home/End send CSI H / CSI F in xterm (SS3 in application mode)
+            ConsoleKey.Home => CursorKey('H', mod, applicationMode),
+            ConsoleKey.End => CursorKey('F', mod, applicationMode),
+
+            // Editing keypad
+            ConsoleKey.Insert => TildeKey(2, mod),
+            ConsoleKey.Delete => TildeKey(3, mod),
+            ConsoleKey.PageUp => TildeKey(5, mod),
+            ConsoleKey.PageDown => TildeKey(6, mod),
+
+            // Function keys F1-F4 (PF keys)
+            ConsoleKey.F1 => Pf1To4('P', mod),
+            ConsoleKey.F2 => Pf1To4('Q', mod),
+            ConsoleKey.F3 => Pf1To4('R', mod),
+            ConsoleKey.F4 => Pf1To4('S', mod),
+
+            // Function keys F5-F12
+            ConsoleKey.F5 => TildeKey(15, mod),
+            ConsoleKey.F6 => TildeKey(17, mod),
+            ConsoleKey.F7 => TildeKey(18, mod),
+            ConsoleKey.F8 => TildeKey(19, mod),
+            ConsoleKey.F9 => TildeKey(20, mod),
+            ConsoleKey.F10 => TildeKey(21, mod),
+            ConsoleKey.F11 => TildeKey(23, mod),
+            ConsoleKey.F12 => TildeKey(24, mod),
+
+            // Special keys
+            ConsoleKey.Enter => alt ? "\x1b\r" : "\r",
+            ConsoleKey.Escape => "\x1b",
+            ConsoleKey.Tab => shift ? "\x1b[Z" : (alt ? "\x1b\t" : "\t"),
+            ConsoleKey.Backspace => TranslateBackspace(ctrl, alt),
+            ConsoleKey.Spacebar when ctrl || alt => TranslateSpace(ctrl, alt),
+
+            // Letters: only Ctrl/Alt combinations produce sequences here;
+            // plain/shifted letters arrive via OnTextInput.
+            >= ConsoleKey.A and <= ConsoleKey.Z when ctrl =>
+                WrapAlt(alt, ((char)(key - ConsoleKey.A + 1)).ToString()),
+            >= ConsoleKey.A and <= ConsoleKey.Z when alt =>
+                "\x1b" + (char)((shift ? 'A' : 'a') + (key - ConsoleKey.A)),
+
+            // Ctrl+digit (xterm): only some digits have control mappings
+            ConsoleKey.D2 when ctrl => WrapAlt(alt, "\x00"),
+            ConsoleKey.D3 when ctrl => WrapAlt(alt, "\x1b"),
+            ConsoleKey.D4 when ctrl => WrapAlt(alt, "\x1c"),
+            ConsoleKey.D5 when ctrl => WrapAlt(alt, "\x1d"),
+            ConsoleKey.D6 when ctrl => WrapAlt(alt, "\x1e"),
+            ConsoleKey.D7 when ctrl => WrapAlt(alt, "\x1f"),
+            ConsoleKey.D8 when ctrl => WrapAlt(alt, "\x7f"),
+
+            // Ctrl+OEM keys commonly used in shells
+            ConsoleKey.OemMinus when ctrl => "\x1f",     // Ctrl+- (undo in emacs)
+            ConsoleKey.Oem4 when ctrl => "\x1b",         // Ctrl+[ == ESC
+            ConsoleKey.Oem5 when ctrl => "\x1c",         // Ctrl+\
+            ConsoleKey.Oem6 when ctrl => "\x1d",         // Ctrl+]
+
+            _ => null
+        };
+
         return result;
     }
 
-    private static string? GetKeyName(ConsoleKey key)
+    private static string TranslateBackspace(bool ctrl, bool alt)
     {
-        return key switch
-        {
-            ConsoleKey.F1 => "F1",
-            ConsoleKey.F2 => "F2",
-            ConsoleKey.F3 => "F3",
-            ConsoleKey.F4 => "F4",
-            ConsoleKey.F5 => "F5",
-            ConsoleKey.F6 => "F6",
-            ConsoleKey.F7 => "F7",
-            ConsoleKey.F8 => "F8",
-            ConsoleKey.F9 => "F9",
-            ConsoleKey.F10 => "F10",
-            ConsoleKey.F11 => "F11",
-            ConsoleKey.F12 => "F12",
-            ConsoleKey.UpArrow => "Up",
-            ConsoleKey.DownArrow => "Down",
-            ConsoleKey.LeftArrow => "Left",
-            ConsoleKey.RightArrow => "Right",
-            ConsoleKey.Home => "Home",
-            ConsoleKey.End => "End",
-            ConsoleKey.Insert => "Insert",
-            ConsoleKey.Delete => "Delete",
-            ConsoleKey.PageUp => "PageUp",
-            ConsoleKey.PageDown => "PageDown",
-            ConsoleKey.Backspace => "Back",
-            ConsoleKey.Tab => "Tab",
-            ConsoleKey.Enter => "Enter",
-            ConsoleKey.Escape => "Escape",
-            ConsoleKey.Spacebar => "Space",
-            >= ConsoleKey.A and <= ConsoleKey.Z => ((char)('A' + key - ConsoleKey.A)).ToString(),
-            _ => null
-        };
+        // xterm: Backspace = DEL(0x7f), Ctrl+Backspace = BS(0x08), Alt prefixes ESC
+        string s = ctrl ? "\b" : "\x7f";
+        return alt ? "\x1b" + s : s;
     }
 
+    private static string TranslateSpace(bool ctrl, bool alt)
+    {
+        // Ctrl+Space = NUL (set-mark in emacs, alternative tmux prefix)
+        string s = ctrl ? "\x00" : " ";
+        return alt ? "\x1b" + s : s;
+    }
+
+    private static string WrapAlt(bool alt, string s) => alt ? "\x1b" + s : s;
+
     /// <summary>
-    /// Wraps text for bracketed paste mode
+    /// Wraps text for bracketed paste mode (DECSET 2004).
     /// </summary>
     public static string WrapForBracketedPaste(string text, bool bracketedPasteMode)
     {
