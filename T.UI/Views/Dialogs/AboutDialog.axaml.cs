@@ -1,8 +1,9 @@
-using Avalonia.Controls;
-using Avalonia.Interactivity;
+using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace T.UI.Views.Dialogs;
 
@@ -26,7 +27,7 @@ public partial class AboutDialog : UserControl
 
     private void OnViewLicenseClick(object? sender, RoutedEventArgs e)
     {
-        // GPL-Lizenz im Browser öffnen
+        // GPL-Lizenz im Browser Ã¶ffnen
         OpenUrl("https://www.gnu.org/licenses/gpl-3.0.txt");
     }
 
@@ -40,17 +41,24 @@ public partial class AboutDialog : UserControl
                 UseShellExecute = true
             });
         }
-        catch
+        catch (Exception) when (!OperatingSystem.IsWindows())
         {
-            // Fallback für Linux
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            // Fallback for Linux/macOS; a click handler must never crash the app.
+            try
             {
-                Process.Start("xdg-open", url);
+                var opener = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "open" : "xdg-open";
+                var psi = new ProcessStartInfo(opener) { UseShellExecute = false };
+                psi.ArgumentList.Add(url);
+                Process.Start(psi);
             }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            catch (Exception)
             {
-                Process.Start("open", url);
+                // No browser available - nothing else we can do.
             }
+        }
+        catch (Exception)
+        {
+            // No browser available - nothing else we can do.
         }
     }
 }

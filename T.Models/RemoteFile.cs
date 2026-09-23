@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace T.Models;
 
@@ -7,25 +7,63 @@ public partial class RemoteFile : ObservableObject
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _fullPath = "";
     [ObservableProperty] private bool _isDirectory;
+    [ObservableProperty] private bool _isSymbolicLink;
     [ObservableProperty] private long _size;
     [ObservableProperty] private DateTime _lastModified;
     [ObservableProperty] private string _permissions = "";
-    [ObservableProperty] private string _owner = "";
-    [ObservableProperty] private string _group = "";
-    [ObservableProperty] private bool _isSelected;
 
-    public string SizeDisplay => IsDirectory ? "-" : FormatSize(Size);
-    public string IconKey => IsDirectory ? "folder_regular" : GetDocumentIconKey(Name);
-    public string IconColor => IsDirectory ? "#FFC107" : "#9E9E9E";
+    /// <summary>Marked for "cut" (Ctrl+X): shown dimmed until it is pasted somewhere else.</summary>
+    [ObservableProperty] private bool _isCut;
+
+    public string SizeDisplay => IsDirectory ? "" : FormatSize(Size);
+    public string IconKey => IsDirectory ? "folder_regular" : IsSymbolicLink ? "document_link_regular" : GetDocumentIconKey(Name);
+
+    /// <summary>The ".." entry that leads to the parent directory.</summary>
+    public bool IsParentLink => Name == "..";
+
+    /// <summary>Lower-case extension (sort key of the type column); empty for folders.</summary>
+    public string Extension => IsDirectory ? "" : Path.GetExtension(Name).ToLowerInvariant();
+
+    /// <summary>Permissions like ls -l: "drwxr-xr-x".</summary>
+    public string PermissionsDisplay => FormatPermissions(Permissions, IsDirectory ? 'd' : IsSymbolicLink ? 'l' : '-');
 
     partial void OnSizeChanged(long value) => OnPropertyChanged(nameof(SizeDisplay));
     partial void OnIsDirectoryChanged(bool value)
     {
         OnPropertyChanged(nameof(SizeDisplay));
         OnPropertyChanged(nameof(IconKey));
-        OnPropertyChanged(nameof(IconColor));
+        OnPropertyChanged(nameof(Extension));
+        OnPropertyChanged(nameof(PermissionsDisplay));
     }
-    partial void OnNameChanged(string value) => OnPropertyChanged(nameof(IconKey));
+    partial void OnIsSymbolicLinkChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IconKey));
+        OnPropertyChanged(nameof(PermissionsDisplay));
+    }
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(IconKey));
+        OnPropertyChanged(nameof(Extension));
+        OnPropertyChanged(nameof(IsParentLink));
+    }
+    partial void OnPermissionsChanged(string value) => OnPropertyChanged(nameof(PermissionsDisplay));
+
+    private static string FormatPermissions(string octal, char type)
+    {
+        if (octal.Length != 3 || !octal.All(c => c is >= '0' and <= '7'))
+            return octal;
+
+        Span<char> text = stackalloc char[10];
+        text[0] = type;
+        for (int i = 0; i < 3; i++)
+        {
+            int bits = octal[i] - '0';
+            text[1 + (i * 3)] = (bits & 4) != 0 ? 'r' : '-';
+            text[2 + (i * 3)] = (bits & 2) != 0 ? 'w' : '-';
+            text[3 + (i * 3)] = (bits & 1) != 0 ? 'x' : '-';
+        }
+        return new string(text);
+    }
 
     private static string GetDocumentIconKey(string fileName) =>
         Path.GetExtension(fileName).ToLowerInvariant() switch
@@ -58,7 +96,7 @@ public partial class RemoteFile : ObservableObject
             _ => "document_regular"
         };
 
-    private static string FormatSize(long bytes)
+    public static string FormatSize(long bytes)
     {
         const long kb = 1024;
         const long mb = kb * 1024;

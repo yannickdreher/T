@@ -1,26 +1,28 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl x:Class="T.UI.Views.Components.TerminalView"
+             xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:T.UI.ViewModels"
-             xmlns:controls="using:T.UI.Controls"
              xmlns:components="using:T.UI.Views.Components"
+             xmlns:controls="using:T.UI.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
-             x:Class="T.UI.Views.Components.TerminalView"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="400"
+             d:DesignWidth="600"
              x:DataType="vm:SessionViewModel"
-             Focusable="False">
+             Focusable="False"
+             mc:Ignorable="d">
 
     <Design.DataContext>
-        <vm:SessionViewModel/>
+        <vm:SessionViewModel />
     </Design.DataContext>
 
     <Grid>
-        <controls:TerminalControl x:Name="Terminal"/>
+        <controls:TerminalControl x:Name="Terminal" />
         <components:TerminalStatsOverlay x:Name="Stats"
-                                         HorizontalAlignment="Right"
-                                         VerticalAlignment="Top"
                                          MinWidth="128"
                                          Margin="8"
-                                         IsVisible="{Binding ShowTerminalStatsOverlay}"/>
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Top"
+                                         IsVisible="False" />
     </Grid>
 </UserControl>

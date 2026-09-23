@@ -1,0 +1,104 @@
+﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="using:T.UI.Converters">
+    <!--
+        Design tokens of the app. Views reference these keys (or the Fluent theme resources)
+        instead of hard coded colors, so light and dark themes both work.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="FolderIconBrush" Color="#E8B339" />
+            <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#B3000000" />
+            <!--  Session tabs: the strip lies on the window background, the selected tab merges into the session surface  -->
+            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#12FFFFFF" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="FolderIconBrush" Color="#C8921A" />
+            <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#B3F3F3F3" />
+            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#0F000000" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!--  Spacing and sizes  -->
+    <x:Double x:Key="IconSize">14</x:Double>
+    <x:Double x:Key="ToolButtonSize">30</x:Double>
+    <x:Double x:Key="SidebarWidth">300</x:Double>
+
+    <!--  Selected rows (file list): a subtle accent tint like Windows Explorer instead of solid accent  -->
+    <x:Double x:Key="DataGridRowSelectedBackgroundOpacity">0.35</x:Double>
+    <x:Double x:Key="DataGridRowSelectedHoveredBackgroundOpacity">0.45</x:Double>
+    <x:Double x:Key="DataGridRowSelectedUnfocusedBackgroundOpacity">0.25</x:Double>
+    <x:Double x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundOpacity">0.35</x:Double>
+
+    <StreamGeometry x:Key="search_regular">M9.30884 10.0159C8.53901 10.6318 7.56251 11 6.5 11C4.01472 11 2 8.98528 2 6.5C2 4.01472 4.01472 2 6.5 2C8.98528 2 11 4.01472 11 6.5C11 7.56251 10.6318 8.53901 10.0159 9.30884L13.8536 13.1464C14.0488 13.3417 14.0488 13.6583 13.8536 13.8536C13.6583 14.0488 13.3417 14.0488 13.1464 13.8536L9.30884 10.0159ZM10 6.5C10 4.567 8.433 3 6.5 3C4.567 3 3 4.567 3 6.5C3 8.433 4.567 10 6.5 10C8.433 10 10 8.433 10 6.5Z</StreamGeometry>
+
+    <!--  Converters  -->
+    <conv:IndexEqualsConverter x:Key="EqualsConverter" />
+    <conv:BoolNegationConverter x:Key="BoolNegationConverter" />
+    <conv:FirstValidationErrorConverter x:Key="FirstValidationErrorConverter" />
+    <conv:ResourceKeyToGeometryConverter x:Key="ResourceKeyToGeometryConverter" />
+    <conv:FileIconConverter x:Key="FileIconConverter" />
+    <conv:FileTypeConverter x:Key="FileTypeConverter" />
+
+    <!--
+        Segmented control: a ListBox with a few options side by side (e.g. Terminal | Files).
+        The selected option is raised like a Windows 11 selector.
+    -->
+    <ControlTheme x:Key="SegmentedItemTheme" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Padding="{TemplateBinding Padding}"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                  Foreground="{TemplateBinding Foreground}" />
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style Selector="^:selected">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="SegmentedTheme" TargetType="ListBox">
+        <Setter Property="Background" Value="{DynamicResource ControlAltFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="ItemContainerTheme" Value="{StaticResource SegmentedItemTheme}" />
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="2" />
+            </ItemsPanelTemplate>
+        </Setter>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Padding="{TemplateBinding Padding}"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+</ResourceDictionary>

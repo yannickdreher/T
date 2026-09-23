@@ -1,82 +1,120 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl x:Class="T.UI.Views.Dialogs.HostKeyDialog"
+             xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:T.UI.ViewModels"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
-             x:Class="T.UI.Views.Dialogs.HostKeyDialog"
+             xmlns:vm="using:T.UI.ViewModels"
              x:DataType="vm:HostKeyDialogViewModel">
 
-    <StackPanel Spacing="16">
-        <!-- Warning FAInfoBar -->
-        <ui:FAInfoBar Severity="Warning"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Title="Host Key Verification"
-                    Message="The authenticity of the host cannot be established. This might be the first time you connect to this server, or the server's key has changed."/>
+    <StackPanel Width="500" Spacing="16">
+        <!--  First connection  -->
+        <ui:FAInfoBar Title="{Binding WarningTitle}"
+                      IsClosable="False"
+                      IsOpen="{Binding !IsKeyChanged}"
+                      IsVisible="{Binding !IsKeyChanged}"
+                      Message="{Binding WarningMessage}"
+                      Severity="Warning" />
 
-        <!-- Host Information -->
+        <!--  Key changed: possible man-in-the-middle  -->
+        <ui:FAInfoBar Title="{Binding WarningTitle}"
+                      IsClosable="False"
+                      IsOpen="{Binding IsKeyChanged}"
+                      IsVisible="{Binding IsKeyChanged}"
+                      Message="{Binding WarningMessage}"
+                      Severity="Error" />
+
+        <!--  Host Information  -->
         <StackPanel Spacing="8">
-            <TextBlock Text="Host Details"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-            
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
-                  RowSpacing="8" ColumnSpacing="12">
-                
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="Host:"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                <TextBlock Grid.Row="0" Grid.Column="1"
-                           Text="{Binding Host}"
-                           FontFamily="Cascadia Code,Consolas,Courier New"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <TextBlock FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Text="Host Details" />
 
-                <TextBlock Grid.Row="1" Grid.Column="0"
-                           Text="Port:"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                <TextBlock Grid.Row="1" Grid.Column="1"
-                           Text="{Binding Port}"
-                           FontFamily="Cascadia Code,Consolas,Courier New"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Grid ColumnDefinitions="Auto,*"
+                  ColumnSpacing="12"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  RowSpacing="8">
 
-                <TextBlock Grid.Row="2" Grid.Column="0"
-                           Text="Key Type:"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                <TextBlock Grid.Row="2" Grid.Column="1"
-                           Text="{Binding KeyType}"
-                           FontFamily="Cascadia Code,Consolas,Courier New"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           IsVisible="{Binding SessionName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Text="Session:" />
+                <TextBlock Grid.Row="0"
+                           Grid.Column="1"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           IsVisible="{Binding SessionName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Text="{Binding SessionName}" />
 
-                <TextBlock Grid.Row="3" Grid.Column="0"
-                           Text="SHA256:"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                <SelectableTextBlock Grid.Row="3" Grid.Column="1"
-                                     Text="{Binding Fingerprint}"
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Host:" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Text="{Binding Host}" />
+
+                <TextBlock Grid.Row="2"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Port:" />
+                <TextBlock Grid.Row="2"
+                           Grid.Column="1"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Text="{Binding Port}" />
+
+                <TextBlock Grid.Row="3"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Key Type:" />
+                <TextBlock Grid.Row="3"
+                           Grid.Column="1"
+                           FontFamily="Cascadia Code,Consolas,Courier New"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Text="{Binding KeyType}" />
+
+                <TextBlock Grid.Row="4"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Fingerprint:" />
+                <SelectableTextBlock Grid.Row="4"
+                                     Grid.Column="1"
                                      FontFamily="Cascadia Code,Consolas,Courier New"
                                      FontSize="11"
-                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                     Text="{Binding Fingerprint}" />
 
-                <TextBlock Grid.Row="4" Grid.Column="0"
-                           Text="MD5:"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                <SelectableTextBlock Grid.Row="4" Grid.Column="1"
-                                     Text="{Binding FingerprintMD5}"
+                <TextBlock Grid.Row="5"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Legacy:" />
+                <SelectableTextBlock Grid.Row="5"
+                                     Grid.Column="1"
                                      FontFamily="Cascadia Code,Consolas,Courier New"
                                      FontSize="11"
-                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     Text="{Binding FingerprintMD5}" />
+
+                <TextBlock Grid.Row="6"
+                           Grid.Column="0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           IsVisible="{Binding IsKeyChanged}"
+                           Text="Previously:" />
+                <SelectableTextBlock Grid.Row="6"
+                                     Grid.Column="1"
+                                     FontFamily="Cascadia Code,Consolas,Courier New"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     IsVisible="{Binding IsKeyChanged}"
+                                     Text="{Binding KnownFingerprints}" />
             </Grid>
         </StackPanel>
 
-        <!-- Security Notice FAInfoBar -->
-        <ui:FAInfoBar Severity="Informational"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Title="Security Notice"
-                    Message="Please verify this fingerprint matches the one provided by your server administrator. If you're unsure, contact your administrator before continuing."/>
-
-        <!-- Auto-save Notice FAInfoBar -->
-        <ui:FAInfoBar Severity="Informational"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Message="If you accept, this key will be automatically saved to ~/.ssh/known_hosts"/>
+        <ui:FAInfoBar Title="Verify the fingerprint"
+                      IsClosable="False"
+                      IsOpen="True"
+                      Message="Compare the fingerprint with the one provided by the server administrator (e.g. ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server). If you accept, the key is saved to ~/.ssh/known_hosts."
+                      Severity="Informational" />
     </StackPanel>
 </UserControl>

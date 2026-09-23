@@ -1,7 +1,7 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
+using CommunityToolkit.Mvvm.ComponentModel;
 using T.Abstractions;
 using T.Models;
 
@@ -87,6 +87,8 @@ public partial class GeneralSettingsViewModel : ObservableValidator
     [Range(10, 120, ErrorMessage = "Keep-alive interval must be between 10 and 120 seconds.")]
     [ObservableProperty] private int _keepAliveInterval = 30;
 
+    [ObservableProperty] private bool _useDefaultIdentityFiles = true;
+
     public GeneralSettingsViewModel()
     {
         ValidateAllProperties();
@@ -100,6 +102,7 @@ public partial class GeneralSettingsViewModel : ObservableValidator
         _reconnectOnStartup = settings.ReconnectOnStartup;
         _connectionTimeout = settings.ConnectionTimeout;
         _keepAliveInterval = settings.KeepAliveInterval;
+        _useDefaultIdentityFiles = settings.UseDefaultIdentityFiles;
         ValidateAllProperties();
     }
 
@@ -111,6 +114,7 @@ public partial class GeneralSettingsViewModel : ObservableValidator
         target.ReconnectOnStartup = ReconnectOnStartup;
         target.ConnectionTimeout = ConnectionTimeout;
         target.KeepAliveInterval = KeepAliveInterval;
+        target.UseDefaultIdentityFiles = UseDefaultIdentityFiles;
     }
 
     partial void OnLanguageChanged(string value) => ValidateProperty(value, nameof(Language));
@@ -158,7 +162,7 @@ public partial class ExplorerSettingsViewModel : ObservableValidator
     [ObservableProperty] private string _defaultDownloadPath = "";
 
     [Required(ErrorMessage = "Sort by is required.")]
-    [RegularExpression("^(Name|Size|Date|Permissions)$", ErrorMessage = "Sort by must be Name, Size, Date, or Permissions.")]
+    [RegularExpression("^(Name|Size|Date|Type|Permissions)$", ErrorMessage = "Sort by must be Name, Size, Date, Type, or Permissions.")]
     [ObservableProperty] private string _sortBy = "Name";
 
     public ExplorerSettingsViewModel()

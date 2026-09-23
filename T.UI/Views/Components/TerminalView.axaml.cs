@@ -1,10 +1,9 @@
+using System;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Threading;
-using System;
-using System.ComponentModel;
 using T.UI.Controls;
 using T.UI.Extensions;
 using T.UI.ViewModels;
@@ -89,6 +88,7 @@ public partial class TerminalView : UserControl, IDisposable
 
         DetachViewModel();
         _terminal?.Shutdown();
+        GC.SuppressFinalize(this);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -122,6 +122,9 @@ public partial class TerminalView : UserControl, IDisposable
         _terminal.DefaultForeground = s.GetForegroundColor();
         _terminal.CursorColor = s.GetCursorColor();
         _terminal.Padding = new Thickness(s.TerminalPadding);
+        _terminal.CursorBlink = s.CursorBlink;
+        _terminal.EnableColors = s.EnableTerminalColors;
+        _terminal.ScrollbackLines = s.ScrollbackLines;
 
         _terminal.CursorStyle = s.CursorStyle switch
         {

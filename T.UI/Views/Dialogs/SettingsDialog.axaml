@@ -1,66 +1,72 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl x:Class="T.UI.Views.Dialogs.SettingsDialog"
+             xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:T.UI.ViewModels"
-             xmlns:ui="using:FluentAvalonia.UI.Controls"
-             xmlns:sys="using:System"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
-             x:Class="T.UI.Views.Dialogs.SettingsDialog"
-             x:DataType="vm:SettingsDialogViewModel">
+             xmlns:sys="using:System"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="500"
+             d:DesignWidth="600"
+             x:DataType="vm:SettingsDialogViewModel"
+             mc:Ignorable="d">
 
     <Design.DataContext>
-        <vm:SettingsDialogViewModel/>
+        <vm:SettingsDialogViewModel />
     </Design.DataContext>
 
     <Grid ColumnDefinitions="160,*" ColumnSpacing="4">
 
-        <!-- Navigation -->
+        <!--  Navigation  -->
         <ListBox x:Name="SettingsNav"
-                 SelectedIndex="0"
-                 CornerRadius="6"
                  Padding="0"
                  Background="Transparent"
-                 BorderThickness="0">
+                 BorderThickness="0"
+                 CornerRadius="6"
+                 SelectedIndex="0">
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PathIcon Data="{StaticResource settings_regular}" Width="14" Height="14"/>
-                    <TextBlock Text="General"/>
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="{StaticResource settings_regular}" />
+                    <TextBlock Text="General" />
                 </StackPanel>
             </ListBoxItem>
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PathIcon Data="{StaticResource folder_regular}" Width="14" Height="14"/>
-                    <TextBlock Text="Explorer"/>
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="{StaticResource folder_regular}" />
+                    <TextBlock Text="Explorer" />
                 </StackPanel>
             </ListBoxItem>
             <ListBoxItem Padding="12,8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PathIcon Data="{StaticResource window_console_regular}" Width="14" Height="14"/>
-                    <TextBlock Text="Terminal"/>
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="{StaticResource window_console_regular}" />
+                    <TextBlock Text="Terminal" />
                 </StackPanel>
             </ListBoxItem>
         </ListBox>
 
-        <!-- Pages -->
+        <!--  Pages  -->
         <Border Grid.Column="1"
                 Background="{DynamicResource LayerFillColorDefaultBrush}"
-                CornerRadius="{DynamicResource ControlCornerRadius}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource ControlCornerRadius}">
+            <ScrollViewer Padding="0,0,6,0"
                           HorizontalScrollBarVisibility="Disabled"
-                          Padding="0,0,6,0">
+                          VerticalScrollBarVisibility="Auto">
                 <Panel Margin="8">
-                    <!-- Page: General -->
-                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, 
-                        Converter={StaticResource EqualsConverter}, ConverterParameter=0}"
-                                Spacing="8">
+                    <!--  Page: General  -->
+                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, Converter={StaticResource EqualsConverter}, ConverterParameter=0}" Spacing="8">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Theme"/>
+                            <TextBlock Text="Theme" />
                             <ComboBox x:Name="ThemeCombo"
-                                      SelectedItem="{Binding General.Theme}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding General.Theme}">
                                 <sys:String>System</sys:String>
                                 <sys:String>Light</sys:String>
                                 <sys:String>Dark</sys:String>
@@ -68,10 +74,10 @@
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Language"/>
+                            <TextBlock Text="Language" />
                             <ComboBox x:Name="LanguageCombo"
-                                      SelectedItem="{Binding General.Language}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding General.Language}">
                                 <sys:String>System</sys:String>
                                 <sys:String>English</sys:String>
                                 <sys:String>Deutsch</sys:String>
@@ -79,85 +85,84 @@
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Connection timeout (seconds)"/>
+                            <TextBlock Text="Connection timeout (seconds)" />
                             <NumericUpDown x:Name="ConnectionTimeoutInput"
-                                           Value="{Binding General.ConnectionTimeout}"
-                                           Minimum="5" Maximum="120" HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           Maximum="120"
+                                           Minimum="5"
+                                           Value="{Binding General.ConnectionTimeout}" />
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Keep-alive interval (seconds)"/>
+                            <TextBlock Text="Keep-alive interval (seconds)" />
                             <NumericUpDown x:Name="KeepAliveIntervalInput"
-                                           Value="{Binding General.KeepAliveInterval}"
-                                           Minimum="10" Maximum="120" HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           Maximum="120"
+                                           Minimum="10"
+                                           Value="{Binding General.KeepAliveInterval}" />
                         </StackPanel>
 
-                        <CheckBox Content="Confirm before closing window"
-                                  IsChecked="{Binding General.ConfirmOnClose}"/>
+                        <CheckBox Content="Confirm before closing window" IsChecked="{Binding General.ConfirmOnClose}" />
 
-                        <CheckBox Content="Reconnect sessions on startup"
-                                  IsChecked="{Binding General.ReconnectOnStartup}"/>
+                        <CheckBox Content="Reopen sessions that were open on last exit" IsChecked="{Binding General.ReconnectOnStartup}" />
 
-                        <Separator Margin="0,8"/>
+                        <CheckBox Content="Use default SSH keys (~/.ssh/id_ed25519, id_ecdsa, id_rsa) when a session has no key" IsChecked="{Binding General.UseDefaultIdentityFiles}" />
 
-                        <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        <Separator Margin="0,8" />
 
-                        <CheckBox Content="Check for updates on startup"
-                                  IsChecked="{Binding Update.CheckForUpdatesOnStartup}"/>
+                        <TextBlock Margin="0,4,0,0"
+                                   FontWeight="SemiBold"
+                                   Text="Updates" />
+
+                        <CheckBox Content="Check for updates on startup" IsChecked="{Binding Update.CheckForUpdatesOnStartup}" />
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Update Channel"/>
+                            <TextBlock Text="Update Channel" />
                             <ComboBox x:Name="UpdateChannelCombo"
-                                      SelectedItem="{Binding Update.UpdateChannel}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding Update.UpdateChannel}">
                                 <sys:String>Stable</sys:String>
                                 <sys:String>Beta</sys:String>
                             </ComboBox>
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Page: Explorer -->
-                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, 
-                        Converter={StaticResource EqualsConverter}, ConverterParameter=1}"
-                                Spacing="8">
-                        <CheckBox Content="Show hidden files"
-                                  IsChecked="{Binding Explorer.ShowHiddenFiles}"/>
+                    <!--  Page: Explorer  -->
+                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, Converter={StaticResource EqualsConverter}, ConverterParameter=1}" Spacing="8">
+                        <CheckBox Content="Show hidden files" IsChecked="{Binding Explorer.ShowHiddenFiles}" />
 
-                        <CheckBox Content="Confirm before deleting files"
-                                  IsChecked="{Binding Explorer.ConfirmDelete}"/>
+                        <CheckBox Content="Confirm before deleting files" IsChecked="{Binding Explorer.ConfirmDelete}" />
 
-                        <CheckBox Content="Double-click to open directories"
-                                  IsChecked="{Binding Explorer.DoubleClickToOpen}"/>
+                        <CheckBox Content="Open directories with double-click (otherwise single click)" IsChecked="{Binding Explorer.DoubleClickToOpen}" />
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Sort files by"/>
+                            <TextBlock Text="Sort files by" />
                             <ComboBox x:Name="SortByCombo"
-                                      SelectedItem="{Binding Explorer.SortBy}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding Explorer.SortBy}">
                                 <sys:String>Name</sys:String>
                                 <sys:String>Size</sys:String>
                                 <sys:String>Date</sys:String>
+                                <sys:String>Type</sys:String>
                                 <sys:String>Permissions</sys:String>
                             </ComboBox>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Default download path"/>
+                            <TextBlock Text="Default download path" />
                             <TextBox x:Name="DefaultDownloadPathBox"
-                                     Text="{Binding Explorer.DefaultDownloadPath}"
-                                     Watermark="Leave empty for ~/Downloads"/>
+                                     PlaceholderText="Leave empty for ~/Downloads"
+                                     Text="{Binding Explorer.DefaultDownloadPath}" />
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Page: Terminal -->
-                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, 
-                        Converter={StaticResource EqualsConverter}, ConverterParameter=2}"
-                                Spacing="8">
+                    <!--  Page: Terminal  -->
+                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, Converter={StaticResource EqualsConverter}, ConverterParameter=2}" Spacing="8">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Font family"/>
+                            <TextBlock Text="Font family" />
                             <ComboBox x:Name="TerminalFontFamilyCombo"
-                                      SelectedItem="{Binding Terminal.TerminalFontFamily}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding Terminal.TerminalFontFamily}">
                                 <sys:String>Consolas</sys:String>
                                 <sys:String>Cascadia Mono</sys:String>
                                 <sys:String>JetBrains Mono</sys:String>
@@ -168,64 +173,69 @@
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Font size"/>
+                            <TextBlock Text="Font size" />
                             <NumericUpDown x:Name="TerminalFontSizeInput"
-                                           Value="{Binding Terminal.TerminalFontSize}"
-                                           Minimum="8" Maximum="32" HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           Maximum="32"
+                                           Minimum="8"
+                                           Value="{Binding Terminal.TerminalFontSize}" />
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Cursor style"/>
+                            <TextBlock Text="Cursor style" />
                             <ComboBox x:Name="CursorStyleCombo"
-                                      SelectedItem="{Binding Terminal.CursorStyle}"
-                                      HorizontalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding Terminal.CursorStyle}">
                                 <sys:String>Bar</sys:String>
                                 <sys:String>Block</sys:String>
                                 <sys:String>Underline</sys:String>
                             </ComboBox>
                         </StackPanel>
 
-                        <CheckBox Content="Cursor blinking"
-                                  IsChecked="{Binding Terminal.CursorBlink}"/>
+                        <CheckBox Content="Cursor blinking" IsChecked="{Binding Terminal.CursorBlink}" />
 
-                        <CheckBox Content="Enable terminal colors"
-                                  IsChecked="{Binding Terminal.EnableTerminalColors}"/>
+                        <CheckBox Content="Enable terminal colors" IsChecked="{Binding Terminal.EnableTerminalColors}" />
 
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <StackPanel Grid.Column="0" Spacing="4">
-                                <TextBlock Text="Background color"/>
+                                <TextBlock Text="Background color" />
                                 <TextBox x:Name="TerminalBackgroundBox"
-                                         Text="{Binding Terminal.TerminalBackground}"
-                                         MaxLength="7" HorizontalAlignment="Stretch"/>
+                                         HorizontalAlignment="Stretch"
+                                         MaxLength="7"
+                                         Text="{Binding Terminal.TerminalBackground}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="4">
-                                <TextBlock Text="Foreground color"/>
+                                <TextBlock Text="Foreground color" />
                                 <TextBox x:Name="TerminalForegroundBox"
-                                         Text="{Binding Terminal.TerminalForeground}"
-                                         HorizontalAlignment="Stretch"/>
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding Terminal.TerminalForeground}" />
                             </StackPanel>
                         </Grid>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Cursor color"/>
+                            <TextBlock Text="Cursor color" />
                             <TextBox x:Name="CursorColorBox"
-                                     Text="{Binding Terminal.CursorColor}"
-                                     HorizontalAlignment="Stretch"/>
+                                     HorizontalAlignment="Stretch"
+                                     Text="{Binding Terminal.CursorColor}" />
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Scrollback lines"/>
+                            <TextBlock Text="Scrollback lines" />
                             <NumericUpDown x:Name="ScrollbackLinesInput"
-                                           Value="{Binding Terminal.ScrollbackLines}"
-                                           Minimum="1000" Maximum="100000"
-                                           Increment="1000" HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           Increment="1000"
+                                           Maximum="100000"
+                                           Minimum="1000"
+                                           Value="{Binding Terminal.ScrollbackLines}" />
                         </StackPanel>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Terminal padding (px)"/>
+                            <TextBlock Text="Terminal padding (px)" />
                             <NumericUpDown x:Name="TerminalPaddingInput"
-                                           Value="{Binding Terminal.TerminalPadding}"
-                                           Minimum="0" Maximum="32" HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           Maximum="32"
+                                           Minimum="0"
+                                           Value="{Binding Terminal.TerminalPadding}" />
                         </StackPanel>
                     </StackPanel>
                 </Panel>

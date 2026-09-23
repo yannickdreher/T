@@ -1,7 +1,6 @@
-using Avalonia;
+using System;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
-using System;
 using T.UI.ViewModels;
 
 namespace T.UI.Views.Components;
@@ -9,7 +8,7 @@ namespace T.UI.Views.Components;
 public partial class SessionView : UserControl
 {
     private readonly IServiceProvider? _serviceProvider;
-    private ContentControl? _terminalHost;
+    private readonly ContentControl? _terminalHost;
     private TerminalView? _terminalView;
 
     public SessionView()
@@ -39,10 +38,5 @@ public partial class SessionView : UserControl
             _terminalHost.Content = null;
             _terminalView = null;
         }
-    }
-
-    protected override Size ArrangeOverride(Size finalSize)
-    {
-        return base.ArrangeOverride(finalSize);
     }
 }

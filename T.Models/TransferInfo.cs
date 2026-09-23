@@ -1,23 +1,28 @@
+using System.Diagnostics;
+
 namespace T.Models;
 
 public class TransferInfo
 {
+    private readonly long _startTimestamp = Stopwatch.GetTimestamp();
+
     public required string FileName { get; init; }
     public required string RemotePath { get; init; }
     public required string LocalPath { get; init; }
     public required TransferDirection Direction { get; init; }
     public long TotalBytes { get; init; }
     public long TransferredBytes { get; set; }
-    public double ProgressPercent => TotalBytes > 0 ? (double)TransferredBytes / TotalBytes * 100 : 0;
-    public DateTime StartedAt { get; init; } = DateTime.Now;
+    public double ProgressPercent => TotalBytes > 0 ? Math.Min(100, (double)TransferredBytes / TotalBytes * 100) : 0;
+
+    private double ElapsedSeconds => Stopwatch.GetElapsedTime(_startTimestamp).TotalSeconds;
 
     public string SpeedDisplay
     {
         get
         {
-            var elapsed = DateTime.Now - StartedAt;
-            if (elapsed.TotalSeconds < 1) return "–";
-            var bytesPerSec = TransferredBytes / elapsed.TotalSeconds;
+            var elapsed = ElapsedSeconds;
+            if (elapsed < 1) return "â€“";
+            var bytesPerSec = TransferredBytes / elapsed;
             return bytesPerSec switch
             {
                 >= 1_073_741_824 => $"{bytesPerSec / 1_073_741_824:F1} GB/s",
@@ -32,9 +37,9 @@ public class TransferInfo
     {
         get
         {
-            var elapsed = DateTime.Now - StartedAt;
-            if (elapsed.TotalSeconds < 1 || TransferredBytes == 0) return "–";
-            var remaining = elapsed.TotalSeconds / TransferredBytes * (TotalBytes - TransferredBytes);
+            var elapsed = ElapsedSeconds;
+            if (elapsed < 1 || TransferredBytes <= 0) return "â€“";
+            var remaining = elapsed / TransferredBytes * Math.Max(0, TotalBytes - TransferredBytes);
             var eta = TimeSpan.FromSeconds(remaining);
             return eta.TotalHours >= 1 ? $"{eta:hh\\:mm\\:ss}" : $"{eta:mm\\:ss}";
         }

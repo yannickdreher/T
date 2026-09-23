@@ -9,4 +9,5 @@ public partial class ExplorerSettings : ObservableObject
     [ObservableProperty] private string _defaultDownloadPath = "";
     [ObservableProperty] private bool _doubleClickToOpen = true;
     [ObservableProperty] private string _sortBy = "Name";
+    [ObservableProperty] private bool _sortDescending;
 }

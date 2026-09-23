@@ -1,89 +1,95 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:T.UI.ViewModels"
-			 xmlns:components="using:T.UI.Views.Components"
-			 xmlns:ui="using:FluentAvalonia.UI.Controls"
-			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-			 mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
-			 x:Class="T.UI.Views.Components.SessionView"
-			 x:DataType="vm:SessionViewModel">
+﻿<UserControl x:Class="T.UI.Views.Components.SessionView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:components="using:T.UI.Views.Components"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="600"
+             d:DesignWidth="800"
+             x:DataType="vm:SessionViewModel"
+             mc:Ignorable="d">
 
-	<Design.DataContext>
-		<vm:SessionViewModel/>
-	</Design.DataContext>
+    <Design.DataContext>
+        <vm:SessionViewModel />
+    </Design.DataContext>
 
-	<UserControl.Styles>
-		<Style Selector="TabStrip.sessionTabs">
-			<Setter Property="Margin" Value="4,2"/>
-		</Style>
-		<Style Selector="TabStrip.sessionTabs TabStripItem">
-			<Setter Property="FontSize" Value="13"/>
-			<Setter Property="MinHeight" Value="30"/>
-			<Setter Property="Padding" Value="10,4"/>
-			<Setter Property="Margin" Value="0,0,4,0"/>
-			<Setter Property="CornerRadius" Value="4"/>
-		</Style>
-		<Style Selector="TabStrip.sessionTabs TabStripItem PathIcon">
-			<Setter Property="Width" Value="14"/>
-			<Setter Property="Height" Value="14"/>
-		</Style>
-	</UserControl.Styles>
+    <!--  Session surface: continues the selected tab of the tab strip (same color and border).  -->
+    <Border Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
+            BorderBrush="{DynamicResource TabViewBorderBrush}"
+            BorderThickness="1,0,1,1"
+            CornerRadius="0,0,6,6">
+        <Grid RowDefinitions="*,Auto">
 
-	<Grid RowDefinitions="Auto,*,Auto">
+            <!--  Both panels stay attached; only visibility changes, so the terminal keeps its state.  -->
+            <Panel Grid.Row="0">
+                <ContentControl x:Name="TerminalHost" IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}" />
+                <components:SftpExplorerView IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}" />
+            </Panel>
 
-		<!-- Terminal / Explorer tab strip -->
-		<Border Grid.Row="0"
-				Background="{DynamicResource LayerFillColorDefaultBrush}"
-				BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-				BorderThickness="0,0,0,1">
-			<TabStrip Classes="sessionTabs"
-					  SelectedIndex="{Binding SelectedSessionTab, Mode=TwoWay}">
-				<TabStripItem>
-					<StackPanel Orientation="Horizontal" Spacing="6">
-						<PathIcon Data="{StaticResource window_console_regular}"/>
-						<TextBlock Text="Terminal" VerticalAlignment="Center"/>
-					</StackPanel>
-				</TabStripItem>
-				<TabStripItem>
-					<StackPanel Orientation="Horizontal" Spacing="6">
-						<PathIcon Data="{StaticResource folder_regular}"/>
-						<TextBlock Text="Explorer" VerticalAlignment="Center"/>
-					</StackPanel>
-				</TabStripItem>
-			</TabStrip>
-		</Border>
+            <components:SessionStatusBarView Grid.Row="1" />
 
-		<!-- Tab content: panels stay attached, visibility is toggled so the
-			 terminal keeps its session and scroll state across switches -->
-		<Panel Grid.Row="1">
-			<ContentControl x:Name="TerminalHost"
-							IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}"/>
-			<components:SftpExplorerView IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}"/>
-		</Panel>
+            <!--  Connecting / reconnecting  -->
+            <Border Grid.RowSpan="2"
+                    Background="{DynamicResource OverlayBackgroundBrush}"
+                    IsHitTestVisible="True"
+                    IsVisible="{Binding ShowOverlay, FallbackValue=False}">
+                <Border Padding="28,22"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        BoxShadow="0 8 32 0 #40000000"
+                        CornerRadius="{DynamicResource OverlayCornerRadius}">
+                    <StackPanel Width="280" Spacing="16">
+                        <ProgressBar IsIndeterminate="True" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   Text="{Binding OverlayMessage}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                        <Button Padding="24,6"
+                                HorizontalAlignment="Center"
+                                Command="{Binding CancelReconnectCommand}"
+                                Content="Cancel" />
+                    </StackPanel>
+                </Border>
+            </Border>
 
-		<!-- Status Bar / Footer -->
-		<components:SessionStatusBarView Grid.Row="2"/>
-
-		<!-- Connection Overlay -->
-		<Border Grid.RowSpan="3"
-				IsVisible="{Binding ShowOverlay, FallbackValue=False}"
-				Background="#DD000000"
-				IsHitTestVisible="True">
-			<StackPanel HorizontalAlignment="Center"
-						VerticalAlignment="Center"
-						Spacing="20">
-				<ProgressBar IsIndeterminate="True" Width="240"/>
-				<TextBlock Text="{Binding OverlayMessage}"
-						   Foreground="White"
-						   TextAlignment="Center"
-						   HorizontalAlignment="Center"/>
-				<Button Content="Cancel"
-						Command="{Binding CancelReconnectCommand}"
-						HorizontalAlignment="Center"
-						Classes="accent"
-						Padding="24,8"/>
-			</StackPanel>
-		</Border>
-	</Grid>
+            <!--  Connection error: keeps the tab (and terminal output) open for a retry  -->
+            <Border Grid.Row="0"
+                    Margin="12"
+                    Padding="12"
+                    VerticalAlignment="Bottom"
+                    Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                    BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource OverlayCornerRadius}"
+                    IsVisible="{Binding HasConnectionError}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <PathIcon Grid.Column="0"
+                              Width="18"
+                              Height="18"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource plug_disconnected_regular}"
+                              Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
+                    <SelectableTextBlock Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         Text="{Binding ConnectionError}"
+                                         TextWrapping="Wrap" />
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Padding="16,6"
+                                Classes="accent"
+                                Command="{Binding RetryConnectCommand}"
+                                Content="Retry" />
+                        <Button Padding="16,6"
+                                Command="{Binding CloseSessionCommand}"
+                                Content="Close" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

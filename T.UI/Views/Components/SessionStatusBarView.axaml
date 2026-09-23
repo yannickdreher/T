@@ -1,106 +1,131 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:T.UI.ViewModels"
-			 xmlns:components="using:T.UI.Views.Components"
-			 xmlns:ui="using:FluentAvalonia.UI.Controls"
-			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-			 mc:Ignorable="d" d:DesignWidth="800"
-			 x:Class="T.UI.Views.Components.SessionStatusBarView"
-			 x:DataType="vm:SessionViewModel">
+﻿<UserControl x:Class="T.UI.Views.Components.SessionStatusBarView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:components="using:T.UI.Views.Components"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignWidth="800"
+             x:DataType="vm:SessionViewModel"
+             mc:Ignorable="d">
 
-	<Border Background="{DynamicResource LayerFillColorDefaultBrush}"
-			BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-			BorderThickness="0,1,0,0">
-		<Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="0" Height="26">
+    <Border Background="{DynamicResource LayerFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0">
+        <Grid Height="26"
+              ColumnDefinitions="Auto,Auto,*,Auto"
+              ColumnSpacing="0">
 
-			<!-- Connection state -->
-			<Border Grid.Column="0"
-					Padding="8,0"
-					BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-					BorderThickness="0,0,1,0">
-				<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-					<PathIcon Width="12"
-							  Height="12"
-							  IsVisible="{Binding Session.IsConnected}"
-							  Data="{StaticResource plug_connected_checkmark_regular}"
-							  Foreground="{Binding Session.ConnectionStatus, Converter={StaticResource ConnectionStatusBrushConverter}}"/>
+            <!--  Connection state  -->
+            <Border Grid.Column="0"
+                    Padding="8,0"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0">
+                <StackPanel VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="6">
+                    <PathIcon Width="12"
+                              Height="12"
+                              Classes="status"
+                              Classes.busy="{Binding IsBusy}"
+                              Classes.connected="{Binding IsConnected}"
+                              Data="{StaticResource plug_connected_checkmark_regular}"
+                              IsVisible="{Binding IsConnected}" />
 
-					<PathIcon Width="12"
-							  Height="12"
-							  IsVisible="{Binding !Session.IsConnected}"
-							  Data="{StaticResource plug_disconnected_regular}"
-							  Foreground="{Binding Session.ConnectionStatus, Converter={StaticResource ConnectionStatusBrushConverter}}"/>
+                    <PathIcon Width="12"
+                              Height="12"
+                              Classes="status"
+                              Classes.busy="{Binding IsBusy}"
+                              Data="{StaticResource plug_disconnected_regular}"
+                              IsVisible="{Binding !IsConnected}" />
 
-					<TextBlock Text="{Binding Session.ConnectionStatus, FallbackValue='Disconnected'}"
-							   FontSize="11"
-							   VerticalAlignment="Center"/>
-				</StackPanel>
-			</Border>
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="11"
+                               Text="{Binding ConnectionStatus, FallbackValue='Disconnected'}" />
+                </StackPanel>
+            </Border>
 
-			<!-- System monitor (remote host metrics) -->
-			<Border Grid.Column="1"
-					Padding="10,0"
-					IsVisible="{Binding SystemMonitor.IsAvailable}"
-					BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-					BorderThickness="0,0,1,0">
-				<components:SystemMonitorView DataContext="{Binding SystemMonitor}"/>
-			</Border>
+            <!--  System monitor (remote host metrics)  -->
+            <Border Grid.Column="1"
+                    Padding="10,0"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0"
+                    IsVisible="{Binding SystemMonitor.IsAvailable}">
+                <components:SystemMonitorView DataContext="{Binding SystemMonitor}" />
+            </Border>
 
-			<!-- Transfer progress -->
-			<Border Grid.Column="2" Padding="8,0">
-				<StackPanel Orientation="Horizontal"
-							Spacing="8"
-							HorizontalAlignment="Right"
-							VerticalAlignment="Center"
-							IsVisible="{Binding IsTransferring, FallbackValue=False}">
-					<TextBlock Text="{Binding TransferDirection}"
-							   FontSize="11"
-							   VerticalAlignment="Center"/>
-					<TextBlock Text="{Binding TransferFileName}"
-							   FontSize="11"
-							   MaxWidth="150"
-							   TextTrimming="CharacterEllipsis"
-							   VerticalAlignment="Center"/>
-					<ProgressBar Value="{Binding TransferProgress}"
-								 Maximum="100"
-								 Width="150"
-								 Height="5"
-								 VerticalAlignment="Center"/>
-					<TextBlock Text="{Binding TransferProgress, StringFormat={}{0:F0}%}"
-							   Width="35"
-							   FontSize="11"
-							   VerticalAlignment="Center"/>
-					<TextBlock Text="{Binding TransferSpeed}"
-							   Opacity="0.7"
-							   Width="80"
-							   FontSize="11"
-							   VerticalAlignment="Center"/>
-					<TextBlock Text="{Binding TransferEta, StringFormat=ETA {0}}"
-							   Opacity="0.7"
-							   FontSize="11"
-							   VerticalAlignment="Center"/>
-				</StackPanel>
-			</Border>
+            <!--  Last status message (results and errors of explorer actions)  -->
+            <TextBlock Grid.Column="2"
+                       Margin="8,0"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       IsVisible="{Binding !IsTransferring}"
+                       Text="{Binding StatusMessage}"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding StatusMessage}" />
 
-			<!-- Diagnostics toggle -->
-			<Border Grid.Column="3"
-					Padding="4,0"
-					BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-					BorderThickness="1,0,0,0">
-				<Button Command="{Binding ToggleTerminalStatsOverlayCommand}"
-						Background="Transparent"
-						BorderBrush="Transparent"
-						Width="26"
-						Height="20"
-						Padding="2"
-						VerticalAlignment="Center"
-						ToolTip.Tip="Terminal diagnostics">
-					<PathIcon Width="12"
-							  Height="12"
-							  Data="{StaticResource bug_regular}"/>
-				</Button>
-			</Border>
-		</Grid>
-	</Border>
+            <!--  Transfer progress  -->
+            <Border Grid.Column="2" Padding="8,0">
+                <StackPanel HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsTransferring, FallbackValue=False}"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="11"
+                               Text="{Binding TransferDirection}" />
+                    <TextBlock MaxWidth="150"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Text="{Binding TransferFileName}"
+                               TextTrimming="CharacterEllipsis" />
+                    <ProgressBar Width="150"
+                                 Height="5"
+                                 VerticalAlignment="Center"
+                                 Maximum="100"
+                                 Value="{Binding TransferProgress}" />
+                    <TextBlock Width="35"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Text="{Binding TransferProgress, StringFormat={}{0:F0}%}" />
+                    <TextBlock Width="80"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="{Binding TransferSpeed}" />
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="{Binding TransferEta, StringFormat=ETA {0}}" />
+                    <Button Height="20"
+                            Padding="4,0"
+                            VerticalAlignment="Center"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            Command="{Binding CancelTransferCommand}"
+                            Content="Cancel"
+                            FontSize="11"
+                            ToolTip.Tip="Cancel transfer" />
+                </StackPanel>
+            </Border>
+
+            <!--  Diagnostics toggle  -->
+            <Border Grid.Column="3"
+                    Padding="4,0"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,0,0">
+                <Button Height="22"
+                        MinWidth="26"
+                        Classes="tool"
+                        Command="{Binding ToggleTerminalStatsOverlayCommand}"
+                        ToolTip.Tip="Terminal diagnostics">
+                    <PathIcon Width="12"
+                              Height="12"
+                              Data="{StaticResource bug_regular}" />
+                </Button>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

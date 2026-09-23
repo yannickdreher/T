@@ -8,19 +8,16 @@ namespace T.Services;
 
 public class UpdateService(ISettingsService settingsService) : IUpdateService
 {
+    private const string RepositoryUrl = "https://github.com/yannickdreher/T";
+
     private readonly ISettingsService _settingsService = settingsService;
 
     private static string GetFullChannel(string channelVariant)
     {
-        string platform;
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            platform = "win";
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            platform = "linux";
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            platform = "osx";
-        else
-            platform = "unknown";
+        string platform =
+            OperatingSystem.IsWindows() ? "win" :
+            OperatingSystem.IsLinux() ? "linux" :
+            OperatingSystem.IsMacOS() ? "osx" : "unknown";
 
         string arch = RuntimeInformation.ProcessArchitecture switch
         {
@@ -30,50 +27,41 @@ public class UpdateService(ISettingsService settingsService) : IUpdateService
             _ => "unknown"
         };
 
-        string variant = channelVariant.ToLowerInvariant();
-        return $"{platform}-{arch}-{variant}";
+        return $"{platform}-{arch}-{channelVariant.ToLowerInvariant()}";
     }
+
+    private UpdateManager CreateManager() =>
+        new(new GithubSource(RepositoryUrl, null, false), new UpdateOptions
+        {
+            ExplicitChannel = GetFullChannel(_settingsService.Current.Update.UpdateChannel)
+        });
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()
     {
         try
         {
-            var channel = GetFullChannel(_settingsService.Current.Update.UpdateChannel);
-            var source = new GithubSource("https://github.com/yannickdreher/T", null, false);
-            var updateManager = new UpdateManager(source, new UpdateOptions
-            {
-                ExplicitChannel = channel
-            });
-
+            var updateManager = CreateManager();
             if (!updateManager.IsInstalled)
             {
                 Debug.WriteLine("[UpdateService] App is not installed via Velopack, skipping update check");
                 return null;
             }
 
-            var updateInfo = await updateManager.CheckForUpdatesAsync();
-            return updateInfo;
+            return await updateManager.CheckForUpdatesAsync();
         }
-        catch
+        catch (Exception ex)
         {
+            // Update checks are best effort (offline, rate limited, ...).
+            Debug.WriteLine($"[UpdateService] Update check failed: {ex.Message}");
             return null;
         }
     }
 
+    /// <summary>Downloads and applies the update, then restarts. Throws when the update fails.</summary>
     public async Task DownloadAndInstallUpdatesAsync(UpdateInfo updateInfo)
     {
-        try
-        {
-            var channel = GetFullChannel(_settingsService.Current.Update.UpdateChannel);
-            var source = new GithubSource("https://github.com/yannickdreher/T", null, false);
-            var updateManager = new UpdateManager(source, new UpdateOptions
-            {
-                ExplicitChannel = channel
-            });
-
-            await updateManager.DownloadUpdatesAsync(updateInfo);
-            updateManager.ApplyUpdatesAndRestart(updateInfo);
-        }
-        catch { }
+        var updateManager = CreateManager();
+        await updateManager.DownloadUpdatesAsync(updateInfo);
+        updateManager.ApplyUpdatesAndRestart(updateInfo);
     }
 }

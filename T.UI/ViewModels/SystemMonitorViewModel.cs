@@ -1,9 +1,9 @@
-using Avalonia.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
 using T.Abstractions;
 
 namespace T.UI.ViewModels;

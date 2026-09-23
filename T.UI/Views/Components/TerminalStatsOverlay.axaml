@@ -1,78 +1,145 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl x:Class="T.UI.Views.Components.TerminalStatsOverlay"
+             xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:T.UI.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="150" d:DesignHeight="400"
-             x:Class="T.UI.Views.Components.TerminalStatsOverlay"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="400"
+             d:DesignWidth="150"
              x:DataType="vm:TerminalStatsViewModel"
              FontSize="11"
-             Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+             mc:Ignorable="d">
 
-  <!-- Design-time data so the Avalonia designer can render the overlay -->
-  <Design.DataContext>
-    <vm:TerminalStatsViewModel
-        Columns="120"
-        Rows="30"
-        Scrollback="200"
-        IncomingLen="42"
-        CharWidth="8.5"
-        LineHeight="16.0"
-        Hits="1234"
-        Misses="12"
-        Inserts="56"
-        Evictions="3"
-        CurrentCount="128"
-        Capacity="1024"/>
-  </Design.DataContext>
+    <!--  Design-time data so the Avalonia designer can render the overlay  -->
+    <Design.DataContext>
+        <vm:TerminalStatsViewModel CachedGlyphs="128"
+                                   CharWidth="8.5"
+                                   Columns="120"
+                                   FallbackFonts="1"
+                                   FramesDrawn="1234"
+                                   GlyphLookups="91011"
+                                   IncomingLen="42"
+                                   LineHeight="16.0"
+                                   Rows="30"
+                                   RowsBuilt="5678"
+                                   Scrollback="200" />
+    </Design.DataContext>
 
-  <Border Background="{DynamicResource ControlStrongFillColorDisabledBrush}" CornerRadius="4" Padding="8" Margin="8">
-    <StackPanel Spacing="4">
+    <Border Margin="8"
+            Padding="8"
+            Background="{DynamicResource ControlStrongFillColorDisabledBrush}"
+            CornerRadius="4">
+        <StackPanel Spacing="4">
 
-      <!-- Section: Size -->
-      <TextBlock Text="Size" FontWeight="Bold" />
-      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*,">
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Columns:" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Columns, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Rows:" />
-        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Rows, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-      </Grid>
+            <!--  Section: Size  -->
+            <TextBlock FontWeight="Bold" Text="Size" />
+            <Grid ColumnDefinitions="Auto,*," RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Text="Columns:" />
+                <TextBlock Grid.Row="0"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding Columns, StringFormat={}{0}}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Text="Rows:" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding Rows, StringFormat={}{0}}"
+                           TextAlignment="Right" />
+            </Grid>
 
-      <!-- Section: Scrollback / Incoming -->
-      <TextBlock Text="Buffer" FontWeight="Bold" />
-      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*">
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Scrollback:" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Scrollback, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Incoming:" />
-        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding IncomingLen, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-      </Grid>
+            <!--  Section: Scrollback / Incoming  -->
+            <TextBlock FontWeight="Bold" Text="Buffer" />
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Text="Scrollback:" />
+                <TextBlock Grid.Row="0"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding Scrollback, StringFormat={}{0}}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Text="Incoming:" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding IncomingLen, StringFormat={}{0}}"
+                           TextAlignment="Right" />
+            </Grid>
 
-      <!-- Section: Character metrics -->
-      <TextBlock Text="Character" FontWeight="Bold" />
-      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*">
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Char width:" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CharWidth, StringFormat={}{0:F1}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Line height:" />
-        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LineHeight, StringFormat={}{0:F1}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-      </Grid>
+            <!--  Section: Character metrics  -->
+            <TextBlock FontWeight="Bold" Text="Character" />
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Text="Char width:" />
+                <TextBlock Grid.Row="0"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding CharWidth, StringFormat={}{0:F1}}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Text="Line height:" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding LineHeight, StringFormat={}{0:F1}}"
+                           TextAlignment="Right" />
+            </Grid>
 
-      <!-- Section: Cache statistics -->
-      <TextBlock Text="Cache" FontWeight="Bold" />
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="Auto,*">
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Hits:" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Hits, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Misses:" />
-        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Misses, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="2" Grid.Column="0" Text="Inserts:" />
-        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Inserts, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="3" Grid.Column="0" Text="Evictions:" />
-        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Evictions, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="Count:" />
-        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding CurrentCount, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-        <TextBlock Grid.Row="5" Grid.Column="0" Text="Capacity:" />
-        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Capacity, StringFormat={}{0}}" HorizontalAlignment="Right" TextAlignment="Right"/>
-      </Grid>
+            <!--  Section: Renderer  -->
+            <TextBlock FontWeight="Bold" Text="Renderer" />
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Text="Frames:" />
+                <TextBlock Grid.Row="0"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding FramesDrawn}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Text="Rows built:" />
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding RowsBuilt}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="2"
+                           Grid.Column="0"
+                           Text="Glyph lookups:" />
+                <TextBlock Grid.Row="2"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding GlyphLookups}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="3"
+                           Grid.Column="0"
+                           Text="Cached glyphs:" />
+                <TextBlock Grid.Row="3"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding CachedGlyphs}"
+                           TextAlignment="Right" />
+                <TextBlock Grid.Row="4"
+                           Grid.Column="0"
+                           Text="Fallback fonts:" />
+                <TextBlock Grid.Row="4"
+                           Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding FallbackFonts}"
+                           TextAlignment="Right" />
+            </Grid>
 
-    </StackPanel>
-  </Border>
+        </StackPanel>
+    </Border>
 </UserControl>

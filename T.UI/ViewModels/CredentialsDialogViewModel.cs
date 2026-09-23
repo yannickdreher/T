@@ -1,8 +1,8 @@
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using System.Threading.Tasks;
 using T.Models;
 
 namespace T.UI.ViewModels;
@@ -25,8 +25,8 @@ public partial class CredentialsDialogViewModel : ViewModelBase
     public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
 
     public CredentialsDialogViewModel(
-        string hostname, 
-        string? existingUsername = null, 
+        string hostname,
+        string? existingUsername = null,
         string? existingPrivateKeyPath = null,
         string? existingPrivateKeyPassword = null,
         string? errorMessage = null)
@@ -36,7 +36,7 @@ public partial class CredentialsDialogViewModel : ViewModelBase
         _privateKeyPath = existingPrivateKeyPath ?? "";
         _privateKeyPassword = existingPrivateKeyPassword ?? "";
         _errorMessage = errorMessage;
-        
+
         UpdateResult();
     }
 
@@ -70,6 +70,15 @@ public partial class CredentialsDialogViewModel : ViewModelBase
 
     public void SetOwner(Window owner) => _owner = owner;
 
+    /// <summary>
+    /// Users often pick the public key (id_ed25519.pub) by mistake - use the matching
+    /// private key next to it instead.
+    /// </summary>
+    public static string PreferPrivateKey(string path) =>
+        path.EndsWith(".pub", System.StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(path[..^4])
+            ? path[..^4]
+            : path;
+
     [RelayCommand]
     private async Task BrowsePrivateKeyAsync()
     {
@@ -84,7 +93,7 @@ public partial class CredentialsDialogViewModel : ViewModelBase
             [
                 new("SSH Private Keys")
                 {
-                    Patterns = ["id_rsa", "id_ecdsa", "id_ed25519", "*.pem", "*.key"]
+                    Patterns = ["id_rsa", "id_ecdsa", "id_ed25519", "*.pem", "*.key", "*.ppk"]
                 },
                 new("All Files")
                 {
@@ -96,7 +105,7 @@ public partial class CredentialsDialogViewModel : ViewModelBase
         var result = await _owner.StorageProvider.OpenFilePickerAsync(options);
         if (result.Count > 0)
         {
-            PrivateKeyPath = result[0].Path.LocalPath;
+            PrivateKeyPath = PreferPrivateKey(result[0].Path.LocalPath);
         }
     }
 }

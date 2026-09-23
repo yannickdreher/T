@@ -1,8 +1,9 @@
+using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using System.Collections.Generic;
 using T.Models;
+using T.UI.ViewModels;
 
 namespace T.UI.Views.Dialogs;
 
@@ -41,6 +42,18 @@ public partial class SessionEditorDialog : UserControl
     /// </summary>
     public string? SelectedProxySessionId => (ProxyJumpCombo.SelectedItem as ProxyOption)?.Session?.Id;
 
+    /// <summary>Shows a validation error above the form (null hides it).</summary>
+    public string? ValidationError
+    {
+        get => ValidationInfo.Message;
+        set
+        {
+            ValidationInfo.Message = value;
+            ValidationInfo.IsOpen = value != null;
+            ValidationInfo.IsVisible = value != null;
+        }
+    }
+
     public SessionEditorDialog()
     {
         InitializeComponent();
@@ -76,7 +89,7 @@ public partial class SessionEditorDialog : UserControl
             [
                 new("SSH Private Keys")
                 {
-                    Patterns = ["id_rsa", "id_ecdsa", "id_ed25519", "*.pem", "*.key"]
+                    Patterns = ["id_rsa", "id_ecdsa", "id_ed25519", "*.pem", "*.key", "*.ppk"]
                 },
                 new("All Files")
                 {
@@ -88,7 +101,7 @@ public partial class SessionEditorDialog : UserControl
         var result = await topLevel.StorageProvider.OpenFilePickerAsync(options);
         if (result.Count > 0)
         {
-            session.PrivateKeyPath = result[0].Path.LocalPath;
+            session.PrivateKeyPath = CredentialsDialogViewModel.PreferPrivateKey(result[0].Path.LocalPath);
         }
     }
 }

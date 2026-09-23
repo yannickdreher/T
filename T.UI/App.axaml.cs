@@ -1,15 +1,17 @@
-﻿using Avalonia;
+using System;
+using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using T.Abstractions;
+using T.Models;
 using T.UI.Abstractions;
 using T.UI.Extensions;
+using T.UI.Services;
 using T.UI.ViewModels;
 using T.UI.Views;
 using T.UI.Views.Dialogs;
@@ -19,7 +21,7 @@ namespace T.UI;
 
 public partial class App : Application
 {
-    private IServiceProvider? _serviceProvider;
+    private ServiceProvider? _serviceProvider;
     private ISettingsService? _settingsService;
     private IUpdateService? _updateService;
 
@@ -44,6 +46,9 @@ public partial class App : Application
             _settingsService = services.GetRequiredService<ISettingsService>();
             _updateService = services.GetRequiredService<IUpdateService>();
 
+            ApplyTheme(_settingsService.Current);
+            _settingsService.SettingsChanged += ApplyTheme;
+
             var mainWindow = services.GetRequiredService<MainWindow>();
             desktop.MainWindow = mainWindow;
 
@@ -51,9 +56,22 @@ public partial class App : Application
 
             if (_settingsService.Current.Update.CheckForUpdatesOnStartup)
                 mainWindow.Opened += async (_, _) => await CheckForUpdatesAsync(mainWindow);
+
+            // Disposes the SSH manager (and with it all open connections) on exit.
+            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void ApplyTheme(AppSettings settings)
+    {
+        RequestedThemeVariant = settings.General.Theme switch
+        {
+            "Light" => ThemeVariant.Light,
+            "Dark" => ThemeVariant.Dark,
+            _ => ThemeVariant.Default
+        };
     }
 
     private async Task CheckForUpdatesAsync(Window mainWindow)
@@ -83,18 +101,27 @@ public partial class App : Application
             Content = view
         };
 
-        if (await dialog.ShowAsync(owner) == FAContentDialogResult.Primary)
-        {
-            var progressDialog = new FAContentDialog
-            {
-                Title = "Installing Update",
-                Content = "Downloading and installing update...\nThe application will restart automatically.",
-                IsPrimaryButtonEnabled = false,
-                IsSecondaryButtonEnabled = false
-            };
+        if (await dialog.ShowAsync(owner) != FAContentDialogResult.Primary)
+            return;
 
-            _ = progressDialog.ShowAsync(owner);
+        var progressDialog = new FAContentDialog
+        {
+            Title = "Installing Update",
+            Content = "Downloading and installing update...\nThe application will restart automatically.",
+            IsPrimaryButtonEnabled = false,
+            IsSecondaryButtonEnabled = false
+        };
+
+        _ = progressDialog.ShowAsync(owner);
+        try
+        {
             await vm.InstallAsync();
+        }
+        catch (Exception ex)
+        {
+            // Without this the non-closable progress dialog would block the app forever.
+            progressDialog.Hide();
+            await DialogService.ShowMessageAsync(owner, "Update failed", ex.Message);
         }
     }
 }

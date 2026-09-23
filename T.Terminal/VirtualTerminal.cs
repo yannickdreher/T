@@ -1,5 +1,5 @@
-using System.Text;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace T.VT;
 
@@ -11,13 +11,15 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private TerminalBuffer _buffer = new(width, height);
     private TerminalBuffer? _alternateBuffer;
     private readonly List<TerminalLine> _scrollback = [];
-    
-    // Performance: Dirty tracking to optimize rendering downstream
-    private int _dirtyTop = int.MaxValue;
-    private int _dirtyBottom = int.MinValue;
-    
-    public int DirtyTop => _dirtyTop;
-    public int DirtyBottom => _dirtyBottom;
+
+    // Damage tracking for the renderer: per-row flags plus the number of full-screen scrolls
+    // since the renderer last looked. The renderer shifts its row caches by the scroll count
+    // and rebuilds only the flagged rows instead of every row after each line feed.
+    private bool[] _rowDamage = new bool[height];
+    private int _scrollDamage;
+    private bool _fullDamage = true;
+    private bool _hasDamage = true;
+    private bool _cursorMoved;
 
     // Cursor & Dimensions
     private int _cursorColumn;
@@ -26,22 +28,22 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private int _scrollBottom = height - 1;
     private int _width = width;
     private int _height = height;
-    
+
     // Tab stops
     private bool[] _tabStops = InitTabStops(Math.Max(1024, width));
 
     // Current attributes
     private TerminalColor _foreground = TerminalColor.Default;
     private TerminalColor _background = TerminalColor.Default;
-    private TerminalAttribute _attributes = TerminalAttribute.None;
+    private CellAttributes _attributes = CellAttributes.None;
 
     // Cached template for fast writing (avoids struct construction overhead in loops)
     private TerminalCharacter _charTemplate = new() { Foreground = TerminalColor.Default, Background = TerminalColor.Default };
-    
+
     // Saved cursor states
     private readonly CursorState _savedCursor = new();
     private readonly CursorState _savedCursorAlt = new();
-    
+
     // Modes
     private bool _originMode;
     private bool _autoWrap = true;
@@ -65,22 +67,37 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private char _charsetDesignator;
 
     // Last printed character (for REP / CSI b)
-    private char _lastPrintedChar = ' ';
-    
-    private enum ParserState { Ground, Escape, CsiEntry, CsiParam, CsiIntermediate, OscString, DcsEntry, Charset }
+    private int _lastPrintedCodePoint = ' ';
+
+    // Characters with combining marks; cells refer to them by id.
+    private readonly GraphemeTable _graphemes = new();
+
+    // High surrogate waiting for its low half (a pair may be split across two Feed calls).
+    private char _pendingHighSurrogate;
+
+    private enum ParserState { Ground, Escape, EscapeIntermediate, CsiEntry, CsiParam, CsiIntermediate, OscString, IgnoreString, Charset }
     private ParserState _state = ParserState.Ground;
-    
+
+    // Parameters are clamped so hostile input cannot overflow counters or allocate unbounded memory.
+    private const int MaxParamValue = 65535;
+    private const int MaxParamCount = 32;
+
     private readonly List<int> _parameters = new(16);
+    private readonly List<bool> _paramIsSub = new(16); // true for ':' separated sub-parameters (e.g. 38:2::r:g:b)
     private int _currentParam;
     private bool _hasCurrentParam;
-    
+    private bool _nextParamIsSub;
+
     private readonly StringBuilder _oscBuffer = new(256);
-    private char _intermediate;
+    private char _privateMarker; // '?', '>', '<', '=' directly after CSI
+    private char _intermediate;  // 0x20-0x2F byte before the final byte (e.g. ' ' in CSI Ps SP q)
+    private const char InvalidSequence = '\uFFFF'; // marks a malformed CSI sequence that must be ignored
+    private bool _stringEscPending;
 
     // UTF-8 Handling
     private readonly Decoder _utf8Decoder = Encoding.UTF8.GetDecoder();
     private char[] _charBuffer = new char[8192];
-    
+
     public int Width => _width;
     public int Height => _height;
     public int CursorColumn => _cursorColumn;
@@ -89,6 +106,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
     public TerminalBuffer Buffer => _buffer;
     public IReadOnlyList<TerminalLine> Scrollback => _scrollback;
     public int MaxScrollback { get; set; } = 10000;
+
+    /// <summary>Resolves cell values of characters with combining marks (see <see cref="TerminalCharacter.CodePoint"/>).</summary>
+    public GraphemeTable Graphemes => _graphemes;
+
+    /// <summary>Total number of lines ever moved into the scrollback (monotonic; lets views keep a scrolled-back viewport stable).</summary>
+    public long ScrollbackLinesAdded { get; private set; }
 
     /// <summary>DECCKM: application cursor keys mode (ESC O instead of CSI for arrows).</summary>
     public bool ApplicationCursorKeys => _applicationCursorKeys;
@@ -120,14 +143,64 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void MarkDirty(int row)
     {
-        if (row < _dirtyTop) _dirtyTop = row;
-        if (row > _dirtyBottom) _dirtyBottom = row;
+        if ((uint)row < (uint)_rowDamage.Length) _rowDamage[row] = true;
+        _hasDamage = true;
     }
 
     private void MarkDirty(int startRow, int endRow)
     {
-        if (startRow < _dirtyTop) _dirtyTop = startRow;
-        if (endRow > _dirtyBottom) _dirtyBottom = endRow;
+        startRow = Math.Max(0, startRow);
+        endRow = Math.Min(_rowDamage.Length - 1, endRow);
+        for (int row = startRow; row <= endRow; row++) _rowDamage[row] = true;
+        _hasDamage = true;
+    }
+
+    private void MarkAllDirty()
+    {
+        _fullDamage = true;
+        _hasDamage = true;
+    }
+
+    private bool IsFullScreenRegion => _scrollTop == 0 && _scrollBottom == _height - 1;
+
+    /// <summary>The whole screen moved up by <paramref name="lines"/>; shift the row flags along.</summary>
+    private void AddScrollDamage(int lines)
+    {
+        _hasDamage = true;
+        if (_fullDamage) return;
+
+        _scrollDamage += lines;
+        int rows = _rowDamage.Length;
+        if (_scrollDamage >= rows)
+        {
+            _fullDamage = true;
+            return;
+        }
+
+        Array.Copy(_rowDamage, lines, _rowDamage, 0, rows - lines);
+        Array.Fill(_rowDamage, true, rows - lines, lines);
+    }
+
+    /// <summary>
+    /// Hands the accumulated damage to the renderer and resets it. <paramref name="rows"/> receives
+    /// the dirty flags (in current screen coordinates, i.e. after applying <paramref name="scrolled"/>).
+    /// Returns false when nothing changed since the last call.
+    /// </summary>
+    public bool TakeDamage(bool[] rows, out int scrolled, out bool full)
+    {
+        full = _fullDamage;
+        scrolled = _scrollDamage;
+        var any = _hasDamage;
+
+        int n = Math.Min(rows.Length, _rowDamage.Length);
+        Array.Copy(_rowDamage, rows, n);
+        if (rows.Length > n) Array.Fill(rows, true, n, rows.Length - n);
+
+        Array.Clear(_rowDamage);
+        _scrollDamage = 0;
+        _fullDamage = false;
+        _hasDamage = false;
+        return any;
     }
 
     private void UpdateTemplate()
@@ -135,19 +208,45 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _charTemplate.Foreground = _foreground;
         _charTemplate.Background = _background;
         _charTemplate.Attributes = _attributes;
-        _charTemplate.Char = ' '; 
+        _charTemplate.CodePoint = ' ';
     }
 
     public void Resize(int width, int height)
     {
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+
+        // Shrinking: keep the cursor line visible by moving the lines above it into the
+        // scrollback (main screen) instead of cutting off the bottom where the prompt is.
+        if (height < _height && _cursorRow >= height)
+        {
+            int shift = _cursorRow - height + 1;
+            var removed = _buffer.RemoveTopLines(shift);
+            if (_alternateBuffer == null)
+            {
+                _scrollback.AddRange(removed);
+                ScrollbackLinesAdded += removed.Count;
+                TrimScrollback();
+            }
+            _cursorRow -= shift;
+            _savedCursor.Row = Math.Max(0, _savedCursor.Row - shift);
+        }
+
         _width = width;
         _height = height;
         _buffer.Resize(width, height);
         _alternateBuffer?.Resize(width, height);
-        _scrollBottom = Math.Min(_scrollBottom, height - 1);
+        _rowDamage = new bool[height];
+        MarkAllDirty();
+
+        // Like xterm: a resize resets the scroll region to the full screen.
+        _scrollTop = 0;
+        _scrollBottom = height - 1;
         _cursorColumn = Math.Min(_cursorColumn, width - 1);
         _cursorRow = Math.Min(_cursorRow, height - 1);
-        
+        ClampSavedCursor(_savedCursor);
+        ClampSavedCursor(_savedCursorAlt);
+
         if (width > _tabStops.Length)
         {
             var newTabs = new bool[width + 128];
@@ -156,7 +255,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 newTabs[i] = true;
             _tabStops = newTabs;
         }
-        
+
         ScreenChanged?.Invoke();
     }
 
@@ -167,22 +266,20 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     public void Feed(ReadOnlySpan<char> chars)
     {
-        _dirtyTop = int.MaxValue;
-        _dirtyBottom = int.MinValue;
-
         int prevRow = _cursorRow;
         int prevCol = _cursorColumn;
 
         ProcessTextFast(chars);
 
-        // Cursor-only movement must also trigger a repaint of the affected rows
+        // The cursor is drawn on its own layer: a cursor-only move needs a notification, not a row repaint.
         if (_cursorRow != prevRow || _cursorColumn != prevCol)
-        {
-            MarkDirty(Math.Min(prevRow, _cursorRow), Math.Max(prevRow, _cursorRow));
-        }
+            _cursorMoved = true;
 
-        if (_dirtyTop <= _dirtyBottom)
+        if (_hasDamage || _cursorMoved)
+        {
+            _cursorMoved = false;
             ScreenChanged?.Invoke();
+        }
     }
 
     public void Feed(ReadOnlySpan<byte> data)
@@ -203,16 +300,11 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
         while (currentPos < len)
         {
-            if (_state == ParserState.Ground)
+            if (_state == ParserState.Ground && _pendingHighSurrogate == '\0')
             {
                 int i = currentPos;
-                // Fast path for printable ASCII
-                while (i < len)
-                {
-                    char c = text[i];
-                    if (c < 32 || c == 127) break;
-                    i++;
-                }
+                // Fast path for runs of single-width characters without combining marks
+                while (i < len && IsSimplePrintable(text[i])) i++;
 
                 int runLength = i - currentPos;
                 if (runLength > 0)
@@ -230,6 +322,13 @@ public class VirtualTerminal(int width = 80, int height = 24)
         }
     }
 
+    /// <summary>
+    /// Printable ASCII and U+00A0-U+02FF: always one column wide and never combining, so a
+    /// run of them can be copied into the line directly.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsSimplePrintable(char c) => (uint)(c - 0x20) < 0x5F || (uint)(c - 0xA0) < 0x260;
+
     public TerminalCharacter GetCell(int column, int row)
     {
         if (row >= 0 && row < _buffer.Count && column >= 0)
@@ -244,40 +343,66 @@ public class VirtualTerminal(int width = 80, int height = 24)
         {
             case ParserState.Ground: ProcessGroundState(c); break;
             case ParserState.Escape: ProcessEscapeState(c); break;
+            case ParserState.EscapeIntermediate: ProcessEscapeIntermediateState(c); break;
             case ParserState.CsiEntry:
             case ParserState.CsiParam:
             case ParserState.CsiIntermediate: ProcessCsiState(c); break;
             case ParserState.OscString: ProcessOscState(c); break;
+            case ParserState.IgnoreString: ProcessIgnoreStringState(c); break;
             case ParserState.Charset: ProcessCharsetState(c); break;
         }
     }
 
     private void ProcessGroundState(char c)
     {
+        if (_pendingHighSurrogate != '\0')
+        {
+            char high = _pendingHighSurrogate;
+            _pendingHighSurrogate = '\0';
+            if (char.IsLowSurrogate(c))
+            {
+                PutCodePoint(char.ConvertToUtf32(high, c));
+                return;
+            }
+            PutCodePoint(0xFFFD); // unpaired high surrogate
+        }
+
         if (c >= 32 && c != 127)
         {
-            PutChar(c);
+            if (c is >= '\x80' and < '\xA0')
+                return; // C1 control characters are not printed
+            if (char.IsHighSurrogate(c))
+                _pendingHighSurrogate = c;
+            else
+                PutCodePoint(char.IsLowSurrogate(c) ? 0xFFFD : c);
             return;
         }
 
+        if (c == '\x1B')
+            _state = ParserState.Escape;
+        else
+            ExecuteControl(c);
+    }
+
+    /// <summary>C0 control characters (also executed inside escape sequences, like xterm).</summary>
+    private void ExecuteControl(char c)
+    {
         switch (c)
         {
-            case '\x1B': _state = ParserState.Escape; break;
-            case '\r': 
+            case '\r':
                 _cursorColumn = 0;
-                MarkDirty(_cursorRow); // Fix: Zeile als dirty markieren
+                MarkDirty(_cursorRow);
                 break;
             case '\n' or '\x0B' or '\x0C': LineFeed(); break;
-            case '\b': 
-                if (_cursorColumn > 0) 
+            case '\b':
+                if (_cursorColumn > 0)
                 {
-                    _cursorColumn--;
-                    MarkDirty(_cursorRow); // Fix: Zeile als dirty markieren
+                    _cursorColumn = Math.Min(_cursorColumn, _width) - 1;
+                    MarkDirty(_cursorRow);
                 }
                 break;
             case '\t': Tab(); break;
             case '\a': break; // Bell
-            case (char)127: break; // DEL
             case '\x0E': _glIsG1 = true; break;  // SO: select G1
             case '\x0F': _glIsG1 = false; break; // SI: select G0
         }
@@ -290,18 +415,34 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case '[':
                 _state = ParserState.CsiEntry;
                 _parameters.Clear();
+                _paramIsSub.Clear();
                 _currentParam = 0;
                 _hasCurrentParam = false;
+                _nextParamIsSub = false;
+                _privateMarker = '\0';
                 _intermediate = '\0';
                 break;
             case ']':
                 _state = ParserState.OscString;
                 _oscBuffer.Clear();
+                _stringEscPending = false;
                 break;
-            case '(' or ')' or '*' or '+':
+            case 'P' or 'X' or '^' or '_':
+                // DCS, SOS, PM, APC: payload is ignored until the string terminator.
+                _state = ParserState.IgnoreString;
+                _stringEscPending = false;
+                break;
+            case '(' or ')' or '*' or '+' or '-' or '.' or '/':
                 _charsetDesignator = c;
                 _state = ParserState.Charset;
                 break;
+            case >= ' ' and <= '/':
+                // Other intermediates (ESC # 8, ESC % G, ESC SP F, ...): swallow the final byte.
+                _state = ParserState.EscapeIntermediate;
+                break;
+            case '\x18' or '\x1A': _state = ParserState.Ground; break; // CAN / SUB abort
+            case '\x1B': break; // ESC ESC: restart
+            case < ' ': ExecuteControl(c); break;
             case '7': SaveCursor(); _state = ParserState.Ground; break;
             case '8': RestoreCursor(); _state = ParserState.Ground; break;
             case 'D': LineFeed(); _state = ParserState.Ground; break;
@@ -332,27 +473,46 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _state = ParserState.Ground;
     }
 
+    private void ProcessEscapeIntermediateState(char c)
+    {
+        if (c >= '0' && c <= '~')
+            _state = ParserState.Ground;
+        else if (c == '\x1B')
+            _state = ParserState.Escape;
+        else if (c is '\x18' or '\x1A')
+            _state = ParserState.Ground;
+        else if (c < ' ')
+            ExecuteControl(c);
+    }
+
     private void ProcessCsiState(char c)
     {
         if (c >= '0' && c <= '9')
         {
-            _currentParam = _currentParam * 10 + (c - '0');
+            _currentParam = Math.Min(_currentParam * 10 + (c - '0'), MaxParamValue);
             _hasCurrentParam = true;
             _state = ParserState.CsiParam;
         }
-        else if (c == ';')
+        else if (c == ';' || c == ':')
         {
-            _parameters.Add(_hasCurrentParam ? _currentParam : 0);
-            _currentParam = 0;
-            _hasCurrentParam = false;
+            PushParam();
+            _nextParamIsSub = c == ':';
+            _state = ParserState.CsiParam;
         }
-        else if (c == '?' || c == '>' || c == '!' || c == '"' || c == '\'' || c == ' ')
+        else if (c >= '<' && c <= '?')
         {
-            _intermediate = c;
+            // Private marker - only valid directly after CSI.
+            if (_state == ParserState.CsiEntry) _privateMarker = c;
+            else _intermediate = InvalidSequence; // malformed: ignore the sequence
         }
-        else if (c >= 0x40 && c <= 0x7E)
+        else if (c >= ' ' && c <= '/')
         {
-            if (_hasCurrentParam) _parameters.Add(_currentParam);
+            _intermediate = _intermediate == '\0' ? c : InvalidSequence;
+            _state = ParserState.CsiIntermediate;
+        }
+        else if (c >= '@' && c <= '~')
+        {
+            if (_hasCurrentParam || _parameters.Count > 0) PushParam();
             ExecuteCsi(c);
             _state = ParserState.Ground;
         }
@@ -360,10 +520,40 @@ public class VirtualTerminal(int width = 80, int height = 24)
         {
             _state = ParserState.Escape;
         }
+        else if (c is '\x18' or '\x1A')
+        {
+            _state = ParserState.Ground;
+        }
+        else if (c < ' ')
+        {
+            ExecuteControl(c);
+        }
+    }
+
+    private void PushParam()
+    {
+        if (_parameters.Count < MaxParamCount)
+        {
+            _parameters.Add(_hasCurrentParam ? _currentParam : 0);
+            _paramIsSub.Add(_nextParamIsSub);
+        }
+        _currentParam = 0;
+        _hasCurrentParam = false;
+        _nextParamIsSub = false;
     }
 
     private void ProcessOscState(char c)
     {
+        if (_stringEscPending)
+        {
+            // ESC terminates the string; "ESC \" is the regular ST. Any other byte starts a new escape sequence.
+            _stringEscPending = false;
+            ExecuteOsc();
+            _state = ParserState.Ground;
+            if (c != '\\') ProcessEscapeState(c);
+            return;
+        }
+
         if (c == '\x07' || c == '\x9C')
         {
             ExecuteOsc();
@@ -371,13 +561,30 @@ public class VirtualTerminal(int width = 80, int height = 24)
         }
         else if (c == '\x1B')
         {
-            _state = ParserState.Ground;
-            ExecuteOsc();
+            _stringEscPending = true;
         }
-        else if (_oscBuffer.Length < 1024)
+        else if (c is '\x18' or '\x1A')
+        {
+            _state = ParserState.Ground;
+        }
+        else if (_oscBuffer.Length < 4096)
         {
             _oscBuffer.Append(c);
         }
+    }
+
+    private void ProcessIgnoreStringState(char c)
+    {
+        if (_stringEscPending)
+        {
+            _stringEscPending = false;
+            if (c == '\\') { _state = ParserState.Ground; return; }
+            if (c == '\x1B') return; // doubled ESC (e.g. tmux passthrough) stays inside the string
+            return;
+        }
+
+        if (c == '\x1B') _stringEscPending = true;
+        else if (c is '\x9C' or '\x18' or '\x1A') _state = ParserState.Ground;
     }
 
     private int GetParam(int index, int defaultValue = 1) =>
@@ -385,6 +592,15 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void ExecuteCsi(char cmd)
     {
+        if (_intermediate == InvalidSequence)
+            return;
+
+        if (_privateMarker != '\0' || _intermediate != '\0')
+        {
+            ExecuteCsiExtended(cmd);
+            return;
+        }
+
         switch (cmd)
         {
             case 'A': CursorUp(GetParam(0)); break;
@@ -415,16 +631,39 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case 'n': DeviceStatusReport(); break;
             case 'c': DeviceAttributes(); break;
             case 'g': ClearTabStop(GetParam(0, 0)); break;
-            case 'q':
-                if (_intermediate == ' ') CursorStyleChanged?.Invoke(GetParam(0, 1));
-                break;
+        }
+    }
+
+    /// <summary>
+    /// CSI sequences with a private marker or intermediate byte. Anything not listed is
+    /// ignored - e.g. "CSI > 4;1 m" (modifyOtherKeys) must not change SGR attributes and
+    /// "CSI > 1 u" / "CSI &lt; u" (kitty keyboard protocol) must not restore the cursor.
+    /// </summary>
+    private void ExecuteCsiExtended(char cmd)
+    {
+        switch (_privateMarker, _intermediate, cmd)
+        {
+            case ('?', '\0', 'h'): SetMode(true); break;
+            case ('?', '\0', 'l'): SetMode(false); break;
+            case ('?', '\0', 'J'): EraseInDisplay(GetParam(0, 0)); break;   // DECSED
+            case ('?', '\0', 'K'): EraseInLine(GetParam(0, 0)); break;      // DECSEL
+            case ('?', '\0', 'n'): DeviceStatusReport(privateReport: true); break;
+            case ('>', '\0', 'c'): SendData?.Invoke("\x1B[>0;276;0c"); break; // secondary DA
+            case ('\0', ' ', 'q'): CursorStyleChanged?.Invoke(GetParam(0, 0)); break; // DECSCUSR
+            case ('\0', '!', 'p'): SoftReset(); break;                          // DECSTR
         }
     }
 
     private void RepeatLastCharacter(int count)
     {
         count = Math.Min(count, _width * _height);
-        for (int i = 0; i < count; i++) PutChar(_lastPrintedChar, alreadyMapped: true);
+        int codePoint = _lastPrintedCodePoint;
+        bool wide = UnicodeWidth.GetWidth(codePoint) == 2;
+        for (int i = 0; i < count; i++)
+        {
+            if (wide) PutWide(codePoint);
+            else PutChar(codePoint, alreadyMapped: true);
+        }
     }
 
     private void ExecuteOsc()
@@ -433,7 +672,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
         int semicolonIndex = -1;
         int ps = 0;
-        
+
         for (int i = 0; i < Math.Min(_oscBuffer.Length, 10); i++)
         {
             char c = _oscBuffer[i];
@@ -479,23 +718,24 @@ public class VirtualTerminal(int width = 80, int height = 24)
         MarkDirty(_cursorRow);
         var line = _buffer[_cursorRow];
         int remainingInLine = _width - _cursorColumn;
-        
+
         var cell = _charTemplate;
+        if (text.Length > 0)
+        {
+            char last = text[^1];
+            _lastPrintedCodePoint = graphics ? MapDecSpecialGraphics(last) : last;
+        }
 
         // Case 1: Text fits in current line
         if (text.Length <= remainingInLine)
         {
+            line.PrepareOverwrite(_cursorColumn, _cursorColumn + text.Length);
             for (int i = 0; i < text.Length; i++)
             {
                 char ch = text[i];
                 if (graphics) ch = MapDecSpecialGraphics(ch);
-                cell.Char = ch;
+                cell.CodePoint = ch;
                 line[_cursorColumn + i] = cell;
-            }
-            if (text.Length > 0)
-            {
-                char last = text[^1];
-                _lastPrintedChar = graphics ? MapDecSpecialGraphics(last) : last;
             }
 
             _cursorColumn += text.Length;
@@ -506,14 +746,19 @@ public class VirtualTerminal(int width = 80, int height = 24)
             // Case 2: Text wraps
             if (!_autoWrap)
             {
+                // Without auto wrap the excess overwrites the last column: its last character remains there.
                 int len = remainingInLine;
+                line.PrepareOverwrite(_cursorColumn, _width);
                 for (int i = 0; i < len; i++)
                 {
                     char ch = text[i];
                     if (graphics) ch = MapDecSpecialGraphics(ch);
-                    cell.Char = ch;
+                    cell.CodePoint = ch;
                     line[_cursorColumn + i] = cell;
                 }
+                char lastChar = text[^1];
+                cell.CodePoint = graphics ? MapDecSpecialGraphics(lastChar) : lastChar;
+                line[_width - 1] = cell;
                 _cursorColumn = _width - 1;
             }
             else
@@ -525,18 +770,19 @@ public class VirtualTerminal(int width = 80, int height = 24)
                     line = _buffer[_cursorRow];
                     int chunk = Math.Min(text.Length - processed, _width - _cursorColumn);
                     int startCol = _cursorColumn;
-                    
+
+                    line.PrepareOverwrite(startCol, startCol + chunk);
                     for (int i = 0; i < chunk; i++)
                     {
                         char ch = text[processed + i];
                         if (graphics) ch = MapDecSpecialGraphics(ch);
-                        cell.Char = ch;
+                        cell.CodePoint = ch;
                         line[startCol + i] = cell;
                     }
 
                     processed += chunk;
                     _cursorColumn += chunk;
-                    
+
                     // Explicit wrap only if we still have text to process
                     if (_cursorColumn >= _width && processed < text.Length)
                     {
@@ -549,38 +795,115 @@ public class VirtualTerminal(int width = 80, int height = 24)
         }
     }
 
-    private void PutChar(char c, bool alreadyMapped = false)
+    /// <summary>Prints a character from the slow path: dispatches on its column width.</summary>
+    private void PutCodePoint(int codePoint)
     {
-        if (!alreadyMapped && (_glIsG1 ? _g1Charset : _g0Charset) == CharsetMode.DecSpecialGraphics)
-            c = MapDecSpecialGraphics(c);
-
-        // DELAYED WRAP CHECK
-        if (_cursorColumn >= _width)
+        switch (UnicodeWidth.GetWidth(codePoint))
         {
-            if (_autoWrap) 
+            case 0: CombineWithPrevious(codePoint); break;
+            case 2: PutWide(codePoint); break;
+            default: PutChar(codePoint); break;
+        }
+    }
+
+    /// <summary>Delayed wrap (xenl): a cursor parked behind the last column wraps before the next character.</summary>
+    private void WrapIfPending()
+    {
+        if (_cursorColumn < _width) return;
+
+        if (_autoWrap)
+        {
+            _cursorColumn = 0;
+            LineFeed();
+        }
+        else
+        {
+            _cursorColumn = _width - 1;
+        }
+    }
+
+    private void PutChar(int c, bool alreadyMapped = false)
+    {
+        if (!alreadyMapped && c < 0x80 && (_glIsG1 ? _g1Charset : _g0Charset) == CharsetMode.DecSpecialGraphics)
+            c = MapDecSpecialGraphics((char)c);
+
+        WrapIfPending();
+        MarkDirty(_cursorRow);
+
+        var line = _buffer[_cursorRow];
+        if (_insertMode)
+            line.InsertCharacters(_cursorColumn, 1);
+
+        line.PrepareOverwrite(_cursorColumn, _cursorColumn + 1);
+        var cell = _charTemplate;
+        cell.CodePoint = c;
+        line[_cursorColumn] = cell;
+
+        _lastPrintedCodePoint = c;
+        _cursorColumn++;
+    }
+
+    /// <summary>Prints a double-width character into two cells.</summary>
+    private void PutWide(int codePoint)
+    {
+        if (_width < 2)
+        {
+            PutChar(codePoint);
+            return;
+        }
+
+        WrapIfPending();
+        if (_cursorColumn == _width - 1)
+        {
+            // Does not fit into the last column: wrap early like xterm (that column stays as it is).
+            if (_autoWrap)
             {
                 _cursorColumn = 0;
                 LineFeed();
             }
             else
             {
-                _cursorColumn = _width - 1;
+                _cursorColumn = _width - 2;
             }
         }
 
         MarkDirty(_cursorRow);
-
-        if (_insertMode)
-            _buffer[_cursorRow].InsertCharacters(_cursorColumn, 1);
-
         var line = _buffer[_cursorRow];
+        if (_insertMode)
+            line.InsertCharacters(_cursorColumn, 2);
 
+        line.PrepareOverwrite(_cursorColumn, _cursorColumn + 2);
         var cell = _charTemplate;
-        cell.Char = c;
+        cell.CodePoint = codePoint;
+        cell.Attributes |= CellAttributes.Wide;
         line[_cursorColumn] = cell;
 
-        _lastPrintedChar = c;
-        _cursorColumn++;
+        cell.CodePoint = 0;
+        cell.Attributes = _charTemplate.Attributes | CellAttributes.WideContinuation;
+        line[_cursorColumn + 1] = cell;
+
+        _lastPrintedCodePoint = codePoint;
+        _cursorColumn += 2;
+    }
+
+    /// <summary>
+    /// Zero-width characters (combining marks, variation selectors, joiners) are appended to
+    /// the character before the cursor instead of taking a cell of their own.
+    /// </summary>
+    private void CombineWithPrevious(int mark)
+    {
+        int col = Math.Min(_cursorColumn, _width) - 1;
+        if (col < 0) return; // nothing to combine with
+
+        var line = _buffer[_cursorRow];
+        if (line[col].IsWideContinuation && col > 0) col--;
+
+        var cell = line[col];
+        if (cell.CodePoint == 0) return;
+
+        cell.CodePoint = _graphemes.Combine(cell.CodePoint, mark);
+        line[col] = cell;
+        MarkDirty(_cursorRow);
     }
 
     /// <summary>Maps DEC Special Graphics (ESC ( 0) characters to their Unicode box-drawing equivalents.</summary>
@@ -623,25 +946,24 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void LineFeed()
     {
-        if (_cursorRow >= _scrollBottom)
+        if (_cursorRow == _scrollBottom)
         {
             if (_scrollTop == 0 && _alternateBuffer == null)
             {
                 // Move the top line into scrollback without cloning; the buffer gets a fresh line
                 _scrollback.Add(_buffer.ScrollUpDetach(_scrollTop, _scrollBottom));
-
-                if (_scrollback.Count > MaxScrollback + 100)
-                {
-                    _scrollback.RemoveRange(0, 100);
-                }
+                ScrollbackLinesAdded++;
+                TrimScrollback();
             }
             else
             {
                 _buffer.ScrollUp(_scrollTop, _scrollBottom);
             }
-            MarkDirty(_scrollTop, _scrollBottom);
+
+            if (IsFullScreenRegion) AddScrollDamage(1);
+            else MarkDirty(_scrollTop, _scrollBottom);
         }
-        else
+        else if (_cursorRow < _height - 1)
         {
             _cursorRow++;
         }
@@ -650,14 +972,22 @@ public class VirtualTerminal(int width = 80, int height = 24)
             _cursorColumn = 0;
     }
 
+    private void TrimScrollback()
+    {
+        // Trim in chunks: removing from the front of a List is O(n).
+        int max = Math.Max(0, MaxScrollback);
+        if (_scrollback.Count > max + 100)
+            _scrollback.RemoveRange(0, _scrollback.Count - max);
+    }
+
     private void ReverseIndex()
     {
-        if (_cursorRow <= _scrollTop)
+        if (_cursorRow == _scrollTop)
         {
             _buffer.ScrollDown(_scrollTop, _scrollBottom);
             MarkDirty(_scrollTop, _scrollBottom);
         }
-        else
+        else if (_cursorRow > 0)
         {
             _cursorRow--;
         }
@@ -668,7 +998,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
         int nextStop = _width - 1;
         int start = _cursorColumn + 1;
         int limit = Math.Min(_tabStops.Length, _width);
-        
+
         for (int i = start; i < limit; i++)
         {
             if (_tabStops[i]) { nextStop = i; break; }
@@ -677,31 +1007,56 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _cursorColumn = Math.Min(nextStop, _width - 1);
     }
 
-    private void CursorUp(int count) => _cursorRow = Math.Max(_scrollTop, _cursorRow - count);
-    private void CursorDown(int count) => _cursorRow = Math.Min(_scrollBottom, _cursorRow + count);
+    // Vertical movement stops at the scroll margins only when the cursor is inside them.
+    private void CursorUp(int count)
+    {
+        int top = _cursorRow >= _scrollTop ? _scrollTop : 0;
+        _cursorRow = Math.Max(top, _cursorRow - count);
+    }
+
+    private void CursorDown(int count)
+    {
+        int bottom = _cursorRow <= _scrollBottom ? _scrollBottom : _height - 1;
+        _cursorRow = Math.Min(bottom, _cursorRow + count);
+    }
+
     private void CursorForward(int count) => _cursorColumn = Math.Min(_width - 1, _cursorColumn + count);
-    private void CursorBackward(int count) => _cursorColumn = Math.Max(0, _cursorColumn - count);
+    private void CursorBackward(int count) => _cursorColumn = Math.Max(0, Math.Min(_cursorColumn, _width - 1) - count);
     private void CursorNextLine(int count) { CursorDown(count); _cursorColumn = 0; }
     private void CursorPrevLine(int count) { CursorUp(count); _cursorColumn = 0; }
     private void CursorCharAbsolute(int column) => _cursorColumn = Math.Clamp(column - 1, 0, _width - 1);
-    private void CursorLineAbsolute(int row) => _cursorRow = Math.Clamp(row - 1, 0, _height - 1);
-    
-    private void CursorPosition(int row, int column)
+
+    private void CursorLineAbsolute(int row)
     {
         int baseRow = _originMode ? _scrollTop : 0;
-        _cursorRow = Math.Clamp(baseRow + row - 1, 0, _height - 1);
+        int maxRow = _originMode ? _scrollBottom : _height - 1;
+        _cursorRow = Math.Clamp(baseRow + row - 1, baseRow, maxRow);
+    }
+
+    private void CursorPosition(int row, int column)
+    {
+        CursorLineAbsolute(row);
         _cursorColumn = Math.Clamp(column - 1, 0, _width - 1);
+    }
+
+    /// <summary>Column for editing operations: a pending wrap (cursor at Width) acts on the last column.</summary>
+    private int EditColumn => Math.Min(_cursorColumn, _width - 1);
+
+    private TerminalCharacter BlankWithCurrentBackground()
+    {
+        var fillChar = _charTemplate;
+        fillChar.CodePoint = ' ';
+        return fillChar;
     }
 
     private void EraseInDisplay(int mode)
     {
-        var fillChar = _charTemplate;
-        fillChar.Char = ' ';
-        
+        var fillChar = BlankWithCurrentBackground();
+
         switch (mode)
         {
             case 0:
-                EraseLineSection(_cursorRow, _cursorColumn, _width - 1, fillChar);
+                EraseLineSection(_cursorRow, EditColumn, _width - 1, fillChar);
                 for (int y = _cursorRow + 1; y < _height; y++)
                     EraseLineWhole(y, fillChar);
                 MarkDirty(_cursorRow, _height - 1);
@@ -709,14 +1064,17 @@ public class VirtualTerminal(int width = 80, int height = 24)
             case 1:
                 for (int y = 0; y < _cursorRow; y++)
                     EraseLineWhole(y, fillChar);
-                EraseLineSection(_cursorRow, 0, _cursorColumn, fillChar);
+                EraseLineSection(_cursorRow, 0, EditColumn, fillChar);
                 MarkDirty(0, _cursorRow);
                 break;
             case 2:
-            case 3:
                 for (int y = 0; y < _height; y++)
                     EraseLineWhole(y, fillChar);
-                if (mode == 3) _scrollback.Clear();
+                MarkDirty(0, _height - 1);
+                break;
+            case 3:
+                // ED 3 (xterm): erase saved lines only - the visible screen stays.
+                _scrollback.Clear();
                 MarkDirty(0, _height - 1);
                 break;
         }
@@ -724,14 +1082,13 @@ public class VirtualTerminal(int width = 80, int height = 24)
 
     private void EraseInLine(int mode)
     {
-        var fillChar = _charTemplate;
-        fillChar.Char = ' ';
+        var fillChar = BlankWithCurrentBackground();
         MarkDirty(_cursorRow);
-        
+
         switch (mode)
         {
-            case 0: EraseLineSection(_cursorRow, _cursorColumn, _width - 1, fillChar); break;
-            case 1: EraseLineSection(_cursorRow, 0, _cursorColumn, fillChar); break;
+            case 0: EraseLineSection(_cursorRow, EditColumn, _width - 1, fillChar); break;
+            case 1: EraseLineSection(_cursorRow, 0, EditColumn, fillChar); break;
             case 2: EraseLineWhole(_cursorRow, fillChar); break;
         }
     }
@@ -748,57 +1105,68 @@ public class VirtualTerminal(int width = 80, int height = 24)
         if (row >= _buffer.Count) return;
         var line = _buffer[row];
         int limit = Math.Min(end + 1, _width);
+        start = Math.Max(0, start);
+        line.PrepareOverwrite(start, limit);
         for (int i = start; i < limit; i++) line[i] = fill;
     }
 
-    private void InsertLines(int count) 
-    { 
-        _buffer.InsertLines(_cursorRow, count, _scrollBottom); 
-        MarkDirty(_cursorRow, _scrollBottom); 
-    }
-    
-    private void DeleteLines(int count) 
-    { 
-        _buffer.DeleteLines(_cursorRow, count, _scrollBottom); 
-        MarkDirty(_cursorRow, _scrollBottom); 
-    }
-    
-    private void InsertCharacters(int count) 
-    { 
-        _buffer[_cursorRow].InsertCharacters(_cursorColumn, count); 
-        MarkDirty(_cursorRow); 
-    }
-    
-    private void DeleteCharacters(int count) 
-    { 
-        _buffer[_cursorRow].DeleteCharacters(_cursorColumn, count); 
-        MarkDirty(_cursorRow); 
-    }
-    
-    private void EraseCharacters(int count)
+    private void InsertLines(int count)
     {
-        var fillChar = _charTemplate;
-        fillChar.Char = ' ';
-        EraseLineSection(_cursorRow, _cursorColumn, _cursorColumn + count - 1, fillChar);
+        if (_cursorRow < _scrollTop || _cursorRow > _scrollBottom) return;
+        _buffer.InsertLines(_cursorRow, count, _scrollBottom);
+        MarkDirty(_cursorRow, _scrollBottom);
+        _cursorColumn = 0;
+    }
+
+    private void DeleteLines(int count)
+    {
+        if (_cursorRow < _scrollTop || _cursorRow > _scrollBottom) return;
+        _buffer.DeleteLines(_cursorRow, count, _scrollBottom);
+        MarkDirty(_cursorRow, _scrollBottom);
+        _cursorColumn = 0;
+    }
+
+    private void InsertCharacters(int count)
+    {
+        _buffer[_cursorRow].InsertCharacters(EditColumn, count);
         MarkDirty(_cursorRow);
     }
-    
-    private void ScrollUp(int count) 
-    { 
-        _buffer.ScrollUp(_scrollTop, _scrollBottom, count); 
-        MarkDirty(_scrollTop, _scrollBottom); 
+
+    private void DeleteCharacters(int count)
+    {
+        _buffer[_cursorRow].DeleteCharacters(EditColumn, count);
+        MarkDirty(_cursorRow);
     }
-    
-    private void ScrollDown(int count) 
-    { 
-        _buffer.ScrollDown(_scrollTop, _scrollBottom, count); 
-        MarkDirty(_scrollTop, _scrollBottom); 
+
+    private void EraseCharacters(int count)
+    {
+        int start = EditColumn;
+        EraseLineSection(_cursorRow, start, start + Math.Min(count, _width) - 1, BlankWithCurrentBackground());
+        MarkDirty(_cursorRow);
+    }
+
+    private void ScrollUp(int count)
+    {
+        count = Math.Min(count, _scrollBottom - _scrollTop + 1);
+        _buffer.ScrollUp(_scrollTop, _scrollBottom, count);
+        if (IsFullScreenRegion) AddScrollDamage(count);
+        else MarkDirty(_scrollTop, _scrollBottom);
+    }
+
+    private void ScrollDown(int count)
+    {
+        _buffer.ScrollDown(_scrollTop, _scrollBottom, count);
+        MarkDirty(_scrollTop, _scrollBottom);
     }
 
     private void SetScrollRegion(int top, int bottom)
     {
-        _scrollTop = Math.Clamp(top - 1, 0, _height - 1);
-        _scrollBottom = Math.Clamp(bottom - 1, _scrollTop, _height - 1);
+        top = Math.Clamp(top - 1, 0, _height - 1);
+        bottom = Math.Clamp(bottom - 1, 0, _height - 1);
+        if (top >= bottom) return; // invalid region: ignored (DECSTBM)
+
+        _scrollTop = top;
+        _scrollBottom = bottom;
         CursorPosition(1, 1);
     }
 
@@ -807,97 +1175,128 @@ public class VirtualTerminal(int width = 80, int height = 24)
         if (_parameters.Count == 0)
         {
             ResetAttributes();
-            UpdateTemplate(); 
+            UpdateTemplate();
             return;
         }
 
         for (int i = 0; i < _parameters.Count; i++)
         {
             var p = _parameters[i];
+
+            // Sub-parameters belong to the preceding parameter (ITU T.416 "38:2::r:g:b", "4:3").
+            int subStart = i + 1, subEnd = i + 1;
+            while (subEnd < _parameters.Count && _paramIsSub[subEnd]) subEnd++;
+            int subCount = subEnd - subStart;
+
             switch (p)
             {
                 case 0: ResetAttributes(); break;
-                case 1: _attributes |= TerminalAttribute.Bold; break;
-                case 2: _attributes |= TerminalAttribute.Dim; break;
-                case 3: _attributes |= TerminalAttribute.Italic; break;
-                case 4: _attributes |= TerminalAttribute.Underline; break;
-                case 5: _attributes |= TerminalAttribute.Blink; break;
-                case 7: _attributes |= TerminalAttribute.Inverse; break;
-                case 8: _attributes |= TerminalAttribute.Hidden; break;
-                case 9: _attributes |= TerminalAttribute.Strikethrough; break;
-                case 21: _attributes |= TerminalAttribute.DoubleUnderline; break;
-                case 22: _attributes &= ~(TerminalAttribute.Bold | TerminalAttribute.Dim); break;
-                case 23: _attributes &= ~TerminalAttribute.Italic; break;
-                case 24: _attributes &= ~(TerminalAttribute.Underline | TerminalAttribute.DoubleUnderline); break;
-                case 25: _attributes &= ~TerminalAttribute.Blink; break;
-                case 27: _attributes &= ~TerminalAttribute.Inverse; break;
-                case 28: _attributes &= ~TerminalAttribute.Hidden; break;
-                case 29: _attributes &= ~TerminalAttribute.Strikethrough; break;
+                case 1: _attributes |= CellAttributes.Bold; break;
+                case 2: _attributes |= CellAttributes.Dim; break;
+                case 3: _attributes |= CellAttributes.Italic; break;
+                case 4:
+                    // 4:0 = no underline, 4:1..5 = single/double/curly/dotted/dashed
+                    _attributes &= ~(CellAttributes.Underline | CellAttributes.DoubleUnderline);
+                    if (subCount == 0 || _parameters[subStart] != 0)
+                        _attributes |= subCount > 0 && _parameters[subStart] == 2 ? CellAttributes.DoubleUnderline : CellAttributes.Underline;
+                    break;
+                case 5 or 6: _attributes |= CellAttributes.Blink; break;
+                case 7: _attributes |= CellAttributes.Inverse; break;
+                case 8: _attributes |= CellAttributes.Hidden; break;
+                case 9: _attributes |= CellAttributes.Strikethrough; break;
+                case 21: _attributes |= CellAttributes.DoubleUnderline; break;
+                case 22: _attributes &= ~(CellAttributes.Bold | CellAttributes.Dim); break;
+                case 23: _attributes &= ~CellAttributes.Italic; break;
+                case 24: _attributes &= ~(CellAttributes.Underline | CellAttributes.DoubleUnderline); break;
+                case 25: _attributes &= ~CellAttributes.Blink; break;
+                case 27: _attributes &= ~CellAttributes.Inverse; break;
+                case 28: _attributes &= ~CellAttributes.Hidden; break;
+                case 29: _attributes &= ~CellAttributes.Strikethrough; break;
                 case >= 30 and <= 37: _foreground = new TerminalColor(p - 30); break;
                 case 38:
-                    i++;
-                    if (i < _parameters.Count)
-                    {
-                        if (_parameters[i] == 5 && i + 1 < _parameters.Count)
-                        {
-                            _foreground = TerminalColor.FromPalette256(_parameters[++i]);
-                        }
-                        else if (_parameters[i] == 2 && i + 3 < _parameters.Count)
-                        {
-                            _foreground = TerminalColor.FromRgb(
-                                (byte)_parameters[++i], 
-                                (byte)_parameters[++i], 
-                                (byte)_parameters[++i]);
-                        }
-                    }
-                    break;
+                    if (ParseExtendedColor(ref i, subStart, subCount) is { } fg) _foreground = fg;
+                    continue;
                 case 39: _foreground = TerminalColor.Default; break;
                 case >= 40 and <= 47: _background = new TerminalColor(p - 40); break;
                 case 48:
-                    i++;
-                    if (i < _parameters.Count)
-                    {
-                        if (_parameters[i] == 5 && i + 1 < _parameters.Count)
-                        {
-                            _background = TerminalColor.FromPalette256(_parameters[++i]);
-                        }
-                        else if (_parameters[i] == 2 && i + 3 < _parameters.Count)
-                        {
-                            _background = TerminalColor.FromRgb(
-                                (byte)_parameters[++i], 
-                                (byte)_parameters[++i], 
-                                (byte)_parameters[++i]);
-                        }
-                    }
-                    break;
+                    if (ParseExtendedColor(ref i, subStart, subCount) is { } bg) _background = bg;
+                    continue;
                 case 49: _background = TerminalColor.Default; break;
+                case 58:
+                    // Underline color: not rendered, but its arguments must not be read as attributes.
+                    ParseExtendedColor(ref i, subStart, subCount);
+                    continue;
                 case >= 90 and <= 97: _foreground = new TerminalColor(p - 90 + 8); break;
                 case >= 100 and <= 107: _background = new TerminalColor(p - 100 + 8); break;
             }
+
+            i = subEnd - 1; // skip sub-parameters of this attribute
         }
         UpdateTemplate();
     }
+
+    /// <summary>
+    /// Parses "38;5;n" / "38;2;r;g;b" (semicolon form) and "38:5:n" / "38:2:[cs]:r:g:b"
+    /// (colon form). Advances <paramref name="i"/> past all consumed parameters.
+    /// </summary>
+    private TerminalColor? ParseExtendedColor(ref int i, int subStart, int subCount)
+    {
+        if (subCount > 0)
+        {
+            int mode = _parameters[subStart];
+            i = subStart + subCount - 1;
+            if (mode == 5 && subCount >= 2)
+                return TerminalColor.FromPalette256(ClampByte(_parameters[subStart + 1]));
+            if (mode == 2 && subCount >= 4)
+            {
+                // With a colorspace id there are 5 sub-parameters: 2:cs:r:g:b
+                int rgb = subCount >= 5 ? subStart + 2 : subStart + 1;
+                return TerminalColor.FromRgb(ClampByte(_parameters[rgb]), ClampByte(_parameters[rgb + 1]), ClampByte(_parameters[rgb + 2]));
+            }
+            return null;
+        }
+
+        if (i + 1 >= _parameters.Count) return null;
+        int kind = _parameters[i + 1];
+        if (kind == 5 && i + 2 < _parameters.Count)
+        {
+            var color = TerminalColor.FromPalette256(ClampByte(_parameters[i + 2]));
+            i += 2;
+            return color;
+        }
+        if (kind == 2 && i + 4 < _parameters.Count)
+        {
+            var color = TerminalColor.FromRgb(ClampByte(_parameters[i + 2]), ClampByte(_parameters[i + 3]), ClampByte(_parameters[i + 4]));
+            i += 4;
+            return color;
+        }
+        i += 1;
+        return null;
+    }
+
+    private static byte ClampByte(int value) => (byte)Math.Clamp(value, 0, 255);
 
     private void ResetAttributes()
     {
         _foreground = TerminalColor.Default;
         _background = TerminalColor.Default;
-        _attributes = TerminalAttribute.None;
+        _attributes = CellAttributes.None;
     }
 
     private void SetMode(bool enabled)
     {
-        if (_intermediate == '?')
+        if (_privateMarker == '?')
         {
             foreach (var p in _parameters)
             {
                 switch (p)
                 {
                     case 1: _applicationCursorKeys = enabled; break;
-                    case 6: _originMode = enabled; break;
+                    case 6: _originMode = enabled; CursorPosition(1, 1); break;
                     case 7: _autoWrap = enabled; break;
                     case 25: _cursorVisible = enabled; MarkDirty(_cursorRow); break;
                     case 47: case 1047: SwitchBuffer(enabled, false); break;
+                    case 1048: if (enabled) SaveCursor(); else RestoreCursor(); break;
                     case 1049: SwitchBuffer(enabled, true); break;
                     case 9: _mouseTracking = enabled ? MouseTrackingMode.X10 : MouseTrackingMode.None; break;
                     case 1000: _mouseTracking = enabled ? MouseTrackingMode.Normal : MouseTrackingMode.None; break;
@@ -931,6 +1330,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 if (saveCursor) SaveCursor();
                 _alternateBuffer = _buffer;
                 _buffer = new TerminalBuffer(_width, _height);
+                if (saveCursor)
+                {
+                    // 1049 clears the alternate screen with the cursor at home.
+                    _cursorColumn = 0;
+                    _cursorRow = 0;
+                }
             }
         }
         else
@@ -942,7 +1347,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 if (saveCursor) RestoreCursor();
             }
         }
-        MarkDirty(0, _height - 1);
+        MarkAllDirty();
     }
 
     private void SaveCursor()
@@ -960,6 +1365,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private void RestoreCursor()
     {
         var state = _alternateBuffer != null ? _savedCursorAlt : _savedCursor;
+        ClampSavedCursor(state);
         _cursorColumn = state.Column;
         _cursorRow = state.Row;
         _foreground = state.Foreground;
@@ -970,65 +1376,86 @@ public class VirtualTerminal(int width = 80, int height = 24)
         UpdateTemplate();
     }
 
-    private void DeviceStatusReport()
+    private void ClampSavedCursor(CursorState state)
+    {
+        state.Column = Math.Clamp(state.Column, 0, _width - 1);
+        state.Row = Math.Clamp(state.Row, 0, _height - 1);
+    }
+
+    private void DeviceStatusReport(bool privateReport = false)
     {
         foreach (var p in _parameters)
         {
             switch (p)
             {
-                case 5: SendData?.Invoke("\x1B[0n"); break; 
-                case 6: SendData?.Invoke($"\x1B[{_cursorRow + 1};{_cursorColumn + 1}R"); break; 
+                case 5: SendData?.Invoke("\x1B[0n"); break;
+                case 6:
+                    int row = _cursorRow + 1 - (_originMode ? _scrollTop : 0);
+                    int col = EditColumn + 1;
+                    SendData?.Invoke(privateReport ? $"\x1B[?{row};{col}R" : $"\x1B[{row};{col}R");
+                    break;
             }
         }
     }
 
     private void DeviceAttributes()
     {
-        if (_intermediate == '>') SendData?.Invoke("\x1B[>0;276;0c");
-        else SendData?.Invoke("\x1B[?62;1;2;6;9;15;22c");
+        if (GetParam(0, 0) == 0)
+            SendData?.Invoke("\x1B[?62;1;2;6;9;15;22c");
     }
 
-    private void SetTabStop() 
+    private void SetTabStop()
     {
         if (_cursorColumn < _tabStops.Length) _tabStops[_cursorColumn] = true;
     }
 
-    private void ClearTabStop(int mode) 
+    private void ClearTabStop(int mode)
     {
-        if (mode == 0) 
+        if (mode == 0)
         {
             if (_cursorColumn < _tabStops.Length) _tabStops[_cursorColumn] = false;
         }
         else if (mode == 3) Array.Clear(_tabStops, 0, _tabStops.Length);
     }
 
-    private void FullReset()
+    /// <summary>DECSTR: resets modes and attributes but keeps the screen content.</summary>
+    private void SoftReset()
     {
-        _scrollTop = 0;
-        _scrollBottom = _height - 1;
-        _cursorColumn = 0;
-        _cursorRow = 0;
+        _cursorVisible = true;
         _originMode = false;
         _autoWrap = true;
         _insertMode = false;
-        _cursorVisible = true;
         _applicationCursorKeys = false;
         _applicationKeypad = false;
-        _bracketedPasteMode = false;
-        _mouseTracking = MouseTrackingMode.None;
-        _sgrMouseMode = false;
+        _scrollTop = 0;
+        _scrollBottom = _height - 1;
         _g0Charset = CharsetMode.Ascii;
         _g1Charset = CharsetMode.Ascii;
         _glIsG1 = false;
+        _savedCursor.Row = _savedCursor.Column = 0;
         ResetAttributes();
-        _buffer.Clear();
+        UpdateTemplate();
+        MarkDirty(_cursorRow);
+    }
+
+    private void FullReset()
+    {
+        SoftReset();
+        _cursorColumn = 0;
+        _cursorRow = 0;
+        _lineFeedNewLine = false;
+        _bracketedPasteMode = false;
+        _alternateScroll = true;
+        _mouseTracking = MouseTrackingMode.None;
+        _sgrMouseMode = false;
         _alternateBuffer = null;
+        _buffer.Clear();
         _scrollback.Clear();
 
         Array.Clear(_tabStops, 0, _tabStops.Length);
         for (int i = 8; i < _tabStops.Length; i += 8) _tabStops[i] = true;
 
-        UpdateTemplate();
-        MarkDirty(0, _height - 1);
+        CursorStyleChanged?.Invoke(0);
+        MarkAllDirty();
     }
 }

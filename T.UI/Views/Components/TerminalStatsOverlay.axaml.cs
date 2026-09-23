@@ -3,36 +3,38 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using T.UI.ViewModels;
 
-namespace T.UI.Views.Components
+namespace T.UI.Views.Components;
+
+public partial class TerminalStatsOverlay : UserControl
 {
-    public partial class TerminalStatsOverlay : UserControl
+    // ViewModel property: bind this from parent (or set DataContext manually)
+    public static readonly StyledProperty<TerminalStatsViewModel?> ModelProperty =
+        AvaloniaProperty.Register<TerminalStatsOverlay, TerminalStatsViewModel?>(nameof(Model));
+
+    static TerminalStatsOverlay()
     {
-        // ViewModel property: bind this from parent (or set DataContext manually)
-        public static readonly StyledProperty<TerminalStatsViewModel?> ModelProperty =
-            AvaloniaProperty.Register<TerminalStatsOverlay, TerminalStatsViewModel?>(nameof(Model));
-
-        static TerminalStatsOverlay()
+        ModelProperty.Changed.AddClassHandler<TerminalStatsOverlay>((ctrl, e) =>
         {
-            ModelProperty.Changed.AddClassHandler<TerminalStatsOverlay>((ctrl, e) =>
-            {
-                ctrl.DataContext = e.NewValue as TerminalStatsViewModel;
-            });
-        }
+            ctrl.DataContext = e.NewValue as TerminalStatsViewModel;
+        });
+    }
 
-        public TerminalStatsOverlay()
-        {
-            InitializeComponent();
-        }
+    public TerminalStatsOverlay()
+    {
+        InitializeComponent();
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // Until Model is set, do not inherit the session view model (the bindings expect TerminalStatsViewModel).
+        DataContext = null;
+    }
 
-        public TerminalStatsViewModel? Model
-        {
-            get => GetValue(ModelProperty);
-            set => SetValue(ModelProperty, value);
-        }
+    private void InitializeComponent()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
+
+    public TerminalStatsViewModel? Model
+    {
+        get => GetValue(ModelProperty);
+        set => SetValue(ModelProperty, value);
     }
 }

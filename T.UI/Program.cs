@@ -1,10 +1,10 @@
-﻿using Avalonia;
 using System;
+using Avalonia;
 using Velopack;
 
 namespace T.UI;
 
-class Program
+internal sealed class Program
 {
     [STAThread]
     public static void Main(string[] args)

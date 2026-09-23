@@ -1,122 +1,166 @@
-﻿<wnd:FAAppWindow xmlns="https://github.com/avaloniaui"
-			   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			   xmlns:vm="using:T.UI.ViewModels"
-			   xmlns:components="using:T.UI.Views.Components"
-			   xmlns:converters="using:T.UI.Converters"
-			   xmlns:ui="using:FluentAvalonia.UI.Controls"
-			   xmlns:svg="using:Avalonia.Svg.Skia"
-			   xmlns:wnd="using:FluentAvalonia.UI.Windowing"
-			   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-			   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-			   mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
-			   x:Class="T.UI.Views.MainWindow"
-			   x:DataType="vm:MainWindowViewModel"
-			   Title="T" Width="1200" Height="700" WindowState="Maximized"
-			   Icon="avares://T/Assets/logo.ico"
-			   FontSize="12">
+﻿<wnd:FAAppWindow x:Class="T.UI.Views.MainWindow"
+                 xmlns="https://github.com/avaloniaui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:components="using:T.UI.Views.Components"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:svg="using:Avalonia.Svg.Skia"
+                 xmlns:ui="using:FluentAvalonia.UI.Controls"
+                 xmlns:vm="using:T.UI.ViewModels"
+                 xmlns:wnd="using:FluentAvalonia.UI.Windowing"
+                 Title="T"
+                 Width="1200"
+                 Height="700"
+                 d:DesignHeight="700"
+                 d:DesignWidth="1200"
+                 x:DataType="vm:MainWindowViewModel"
+                 FontSize="12"
+                 Icon="avares://T/Assets/logo.ico"
+                 RenderOptions.BitmapInterpolationMode="HighQuality"
+                 WindowState="Maximized"
+                 mc:Ignorable="d">
 
-	<!-- Design-Time DataContext -->
-	<Design.DataContext>
-		<vm:MainWindowViewModel/>
-	</Design.DataContext>
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
 
-	<wnd:FAAppWindow.Resources>
-		<converters:ConnectionStatusToBrushConverter x:Key="StatusToBrush"/>
-	</wnd:FAAppWindow.Resources>
+    <Grid Margin="8,0,8,8" RowDefinitions="32,*">
 
-	<Grid RowDefinitions="32,*" Margin="8,0,8,8">
+        <!--  Title bar: logo + menu (the window extends its content into the title bar)  -->
+        <StackPanel Grid.Row="0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="6">
+            <Image Width="20"
+                   Height="20"
+                   Source="avares://T/Assets/logo.ico" />
+            <Menu VerticalAlignment="Center">
+                <Menu.Styles>
+                    <Style Selector="MenuItem">
+                        <Setter Property="Height" Value="26" />
+                        <Setter Property="Padding" Value="8,2" />
+                    </Style>
+                </Menu.Styles>
+                <MenuItem Command="{Binding ShowSettingsCommand}" Header="Settings" />
+                <MenuItem Command="{Binding ShowAboutCommand}" Header="About" />
+            </Menu>
+        </StackPanel>
 
-		<StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-			<Image Width="20" Height="20" Source="avares://T/Assets/logo.ico"/>
-			<Menu VerticalAlignment="Center">
-				<Menu.Styles>
-					<Style Selector="MenuItem">
-						<Setter Property="Padding" Value="2"/>
-						<Setter Property="Height" Value="26"/>
-					</Style>
-				</Menu.Styles>
+        <Grid Grid.Row="1" ColumnDefinitions="300,Auto,*">
+            <!--  Sidebar: saved sessions  -->
+            <components:SessionsPanel Grid.Column="0" DataContext="{Binding SessionsTree}" />
 
-				<MenuItem Header="Settings" Command="{Binding ShowSettingsCommand}"/>
-				<MenuItem Header="About" Command="{Binding ShowAboutCommand}"/>
-			</Menu>
-		</StackPanel>
+            <GridSplitter Grid.Column="1"
+                          ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Columns" />
 
-		<Grid Grid.Row="1" ColumnDefinitions="300,Auto,*">
-			<!-- Left Sidebar - Sessions List -->
-			<components:SessionsPanel Grid.Column="0"
-									  DataContext="{Binding SessionsTree}"/>
+            <Panel Grid.Column="2">
+                <!--
+                    Session tabs. The strip lies on the window background; the selected tab merges into
+                    the session surface below it (SessionView). SessionViewCache keeps one SessionView per
+                    session so the live terminal survives tab switches.
+                -->
+                <ui:FATabView x:Name="SessionTabs"
+                              CanReorderTabs="True"
+                              CloseButtonOverlayMode="OnPointerOver"
+                              IsAddTabButtonVisible="True"
+                              IsVisible="{Binding SessionsTree.HasOpenSessions}"
+                              SelectedItem="{Binding SessionsTree.ActiveSession}"
+                              TabItemsSource="{Binding SessionsTree.OpenSessions}"
+                              TabWidthMode="SizeToContent">
+                    <ui:FATabView.TabStripFooter>
+                        <!--  Terminal / file explorer of the active session  -->
+                        <ListBox Margin="12,0,2,4"
+                                 HorizontalAlignment="Right"
+                                 VerticalAlignment="Center"
+                                 Classes="segmented"
+                                 SelectedIndex="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Mode=TwoWay, FallbackValue=0}"
+                                 Theme="{StaticResource SegmentedTheme}">
+                            <ListBoxItem ToolTip.Tip="Terminal">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Classes="small" Data="{StaticResource window_console_regular}" />
+                                    <TextBlock VerticalAlignment="Center" Text="Terminal" />
+                                </StackPanel>
+                            </ListBoxItem>
+                            <ListBoxItem ToolTip.Tip="SFTP file explorer">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Classes="small" Data="{StaticResource folder_open_regular}" />
+                                    <TextBlock VerticalAlignment="Center" Text="Files" />
+                                </StackPanel>
+                            </ListBoxItem>
+                        </ListBox>
+                    </ui:FATabView.TabStripFooter>
+                    <ui:FATabView.TabItemTemplate>
+                        <DataTemplate x:DataType="vm:SessionViewModel">
+                            <ui:FATabViewItem Content="{Binding}" ToolTip.Tip="{Binding Session.Address}">
+                                <ui:FATabViewItem.Header>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Ellipse Classes="status"
+                                                 Classes.busy="{Binding IsBusy}"
+                                                 Classes.connected="{Binding IsConnected}"
+                                                 Classes.error="{Binding HasConnectionError}" />
+                                        <TextBlock MaxWidth="220"
+                                                   Text="{Binding TabTitle}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </ui:FATabViewItem.Header>
+                            </ui:FATabViewItem>
+                        </DataTemplate>
+                    </ui:FATabView.TabItemTemplate>
+                </ui:FATabView>
 
-			<GridSplitter Grid.Column="1"
-						  Background="Transparent"
-						  ResizeDirection="Columns"
-						  ResizeBehavior="PreviousAndNext"/>
-
-			<!-- Main Area - Tabbed Sessions -->
-			<Border Grid.Column="2" Classes="Panel">
-				<Grid RowDefinitions="*,Auto">
-
-					<!-- Session Content (bound to ActiveSession) -->
-					<Grid Grid.Row="0" IsVisible="{Binding SessionsTree.HasOpenSessions}">
-						<!-- FATabView hosts both the tab strip and the selected session body.
-							 Session content resolves through SessionViewCache, which reuses the
-							 same SessionView per session so the live terminal survives tab switches. -->
-						<ui:FATabView TabItemsSource="{Binding SessionsTree.OpenSessions}"
-									SelectedItem="{Binding SessionsTree.ActiveSession}"
-									TabCloseRequested="OnTabCloseRequested"
-									IsAddTabButtonVisible="False"
-									TabWidthMode="SizeToContent"
-									CloseButtonOverlayMode="OnPointerOver"
-									TabStripFooter="{x:Null}">
-							<ui:FATabView.TabItemTemplate>
-								<DataTemplate x:DataType="vm:SessionViewModel">
-									<ui:FATabViewItem Content="{Binding}">
-										<ui:FATabViewItem.Header>
-											<StackPanel Orientation="Horizontal" Spacing="6">
-												<Ellipse Width="8" Height="8"
-														 Fill="{Binding Session.ConnectionStatus, Converter={StaticResource StatusToBrush}}"/>
-												<TextBlock Text="{Binding Session.Name}"/>
-											</StackPanel>
-										</ui:FATabViewItem.Header>
-									</ui:FATabViewItem>
-								</DataTemplate>
-							</ui:FATabView.TabItemTemplate>
-						</ui:FATabView>
-					</Grid>
-
-					<!-- Welcome Screen (no sessions open) -->
-					<StackPanel IsVisible="{Binding !SessionsTree.HasOpenSessions}"
-								HorizontalAlignment="Center" VerticalAlignment="Center"
-								Spacing="10">
-						<svg:Svg Path="/Assets/logo.svg" Width="140" Height="140" Margin="0,0,0,8"/>
-						<TextBlock Text="Welcome"
-								   FontSize="24"
-								   FontWeight="SemiBold"
-								   HorizontalAlignment="Center"/>
-						<TextBlock Text="Select a session in the sidebar and connect to get started."
-								   Opacity="0.6"
-								   FontSize="13"
-								   HorizontalAlignment="Center"/>
-						<Border Background="{DynamicResource LayerFillColorDefaultBrush}"
-								BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-								BorderThickness="1"
-								CornerRadius="8"
-								Padding="16,10"
-								Margin="0,12,0,0"
-								HorizontalAlignment="Center">
-							<StackPanel Spacing="6">
-								<StackPanel Orientation="Horizontal" Spacing="8">
-									<PathIcon Data="{StaticResource window_console_regular}" Width="13" Height="13" Opacity="0.7"/>
-									<TextBlock Text="Terminal with remote system monitor" FontSize="12" Opacity="0.7"/>
-								</StackPanel>
-								<StackPanel Orientation="Horizontal" Spacing="8">
-									<PathIcon Data="{StaticResource folder_regular}" Width="13" Height="13" Opacity="0.7"/>
-									<TextBlock Text="SFTP explorer with folder tree and file views" FontSize="12" Opacity="0.7"/>
-								</StackPanel>
-							</StackPanel>
-						</Border>
-					</StackPanel>
-				</Grid>
-			</Border>
-		</Grid>
-	</Grid>
+                <!--  Welcome screen (no session open)  -->
+                <Border Classes="Panel" IsVisible="{Binding !SessionsTree.HasOpenSessions}">
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="10">
+                        <svg:Svg Width="120"
+                                 Height="120"
+                                 Margin="0,0,0,8"
+                                 Path="/Assets/logo.svg" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Text="Welcome" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="Double-click a session in the sidebar to connect, or create a new one." />
+                        <Button Margin="0,8,0,0"
+                                Padding="16,6"
+                                HorizontalAlignment="Center"
+                                Classes="accent"
+                                Command="{Binding SessionsTree.NewSessionCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Classes="small" Data="{StaticResource plug_connected_add_regular}" />
+                                <TextBlock Text="New session" />
+                            </StackPanel>
+                        </Button>
+                        <Border Margin="0,16,0,0"
+                                Padding="16,10"
+                                HorizontalAlignment="Center"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource window_console_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Terminal with remote system monitor" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource folder_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="SFTP explorer with drag and drop upload" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource key_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Keys, jump hosts and known_hosts shared with OpenSSH" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Panel>
+        </Grid>
+    </Grid>
 </wnd:FAAppWindow>

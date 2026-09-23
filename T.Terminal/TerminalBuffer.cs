@@ -51,6 +51,20 @@ public class TerminalBuffer
             line.Clear();
     }
 
+    /// <summary>
+    /// Removes <paramref name="count"/> lines from the top of the screen and returns them
+    /// (oldest first), e.g. to move them into the scrollback when the screen shrinks.
+    /// </summary>
+    public List<TerminalLine> RemoveTopLines(int count)
+    {
+        count = Math.Clamp(count, 0, _lines.Count);
+        var removed = _lines.GetRange(0, count);
+        _lines.RemoveRange(0, count);
+        while (_lines.Count < _height)
+            _lines.Add(new TerminalLine(_width));
+        return removed;
+    }
+
     public void EnsureRow(int row)
     {
         while (_lines.Count <= row)

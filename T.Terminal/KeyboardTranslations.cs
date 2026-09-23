@@ -1,4 +1,4 @@
-﻿namespace T.VT;
+namespace T.VT;
 
 /// <summary>
 /// Translates keyboard input to VT100/XTerm escape sequences.
@@ -7,6 +7,61 @@
 /// </summary>
 public static class KeyboardTranslations
 {
+    /// <summary>
+    /// A key press as reported by the UI framework.
+    /// </summary>
+    /// <param name="Key">Layout-dependent key (on Windows the virtual key), if it maps to a <see cref="ConsoleKey"/>.</param>
+    /// <param name="PhysicalLetter">The Latin letter printed at this key position on a US keyboard, if it is a letter key.</param>
+    /// <param name="Symbol">The text the key produces with the active layout and modifiers (e.g. "@" for AltGr+Q on German layouts).</param>
+    public readonly record struct KeyPress(ConsoleKey? Key, ConsoleKey? PhysicalLetter, string? Symbol, bool Ctrl, bool Alt, bool Shift);
+
+    /// <summary>
+    /// Decides what a key press sends to the host. Returns <see langword="null"/> when the key
+    /// must be left to the platform's text input (plain characters, AltGr characters, dead keys,
+    /// IME) or when it produces nothing.
+    /// </summary>
+    /// <param name="optionKeyProducesText">macOS: Option (Alt) types layout characters instead of acting as Meta.</param>
+    public static string? Translate(in KeyPress press, bool applicationCursorKeys, bool optionKeyProducesText = false)
+    {
+        var symbol = press.Symbol is { Length: > 0 } s && !char.IsControl(s[0]) ? s : null;
+
+        if (press.Alt && symbol != null && IsLayoutCharacter(press, symbol, optionKeyProducesText))
+            return null;
+
+        // Some backends report non-Latin layouts (Cyrillic, Greek, ...) without a Latin key;
+        // Ctrl/Alt shortcuts then use the key position, like other terminals do.
+        var key = press.Key;
+        if ((press.Ctrl || press.Alt) && key is not (>= ConsoleKey.A and <= ConsoleKey.Z) && press.PhysicalLetter is { } letter)
+            key = letter;
+
+        if (key is { } consoleKey && TranslateKey(consoleKey, press.Ctrl, press.Alt, press.Shift, applicationCursorKeys) is { } sequence)
+            return sequence;
+
+        // Meta for everything else (Alt+., Alt+_, Alt+<Cyrillic letter>, ...): ESC + the typed character.
+        if (press.Alt && !press.Ctrl && symbol != null)
+            return "\x1b" + symbol;
+
+        return null;
+    }
+
+    /// <summary>
+    /// AltGr (reported as Ctrl+Alt on Windows) and macOS Option produce layout characters
+    /// such as '@', '{', '\' or '€'. These must be typed, not translated into control sequences.
+    /// </summary>
+    private static bool IsLayoutCharacter(in KeyPress press, string symbol, bool optionKeyProducesText)
+    {
+        if (!press.Ctrl && !optionKeyProducesText)
+            return false;
+
+        // The key just produced its plain letter/digit: this is a real Ctrl+Alt shortcut.
+        var c = symbol[0];
+        if (press.Key is >= ConsoleKey.A and <= ConsoleKey.Z && char.ToLowerInvariant(c) == (char)('a' + (press.Key - ConsoleKey.A)))
+            return false;
+        if (press.Key is >= ConsoleKey.D0 and <= ConsoleKey.D9 && c == (char)('0' + (press.Key - ConsoleKey.D0)))
+            return false;
+        return true;
+    }
+
     /// <summary>
     /// Computes the xterm modifier parameter (2..8) or 0 when no modifier is active.
     /// </summary>

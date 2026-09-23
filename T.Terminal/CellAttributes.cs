@@ -1,10 +1,10 @@
 namespace T.VT;
 
 /// <summary>
-/// Character attributes (bold, underline, etc.)
+/// Character attributes (bold, underline, etc.) and cell layout flags.
 /// </summary>
 [Flags]
-public enum TerminalAttribute
+public enum CellAttributes
 {
     None = 0,
     Bold = 1 << 0,
@@ -16,4 +16,8 @@ public enum TerminalAttribute
     Hidden = 1 << 6,
     Strikethrough = 1 << 7,
     DoubleUnderline = 1 << 8,
+
+    // Layout flags - set per cell by the emulator, never part of the SGR state.
+    Wide = 1 << 9,
+    WideContinuation = 1 << 10,
 }

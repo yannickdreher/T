@@ -33,10 +33,20 @@ jobs:
       run: |
         dotnet restore T.UI/T.UI.csproj
 
+    - name: Lint
+      shell: pwsh
+      run: |
+        ./lint.ps1
+
     - name: Build
       shell: pwsh
       run: |
         dotnet build T.UI/T.UI.csproj -c Release --no-restore
+
+    - name: Test
+      shell: pwsh
+      run: |
+        dotnet test --project T.Tests/T.Tests.csproj -c Release
 
   build-linux:
     name: Build Linux
@@ -66,3 +76,7 @@ jobs:
     - name: Build
       run: |
         dotnet build T.UI/T.UI.csproj -c Release --no-restore
+
+    - name: Test
+      run: |
+        dotnet test --project T.Tests/T.Tests.csproj -c Release

@@ -1,0 +1,171 @@
+﻿<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:FluentAvalonia.UI.Controls">
+
+    <!--  ── Layout ──  -->
+    <Style Selector="GridSplitter[ResizeDirection=Columns]">
+        <Setter Property="Width" Value="4" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!--  Card: framed pane (sidebar, session area)  -->
+    <Style Selector="Border.Panel">
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <Setter Property="Background" Value="{DynamicResource LayerFillColorDefaultBrush}" />
+    </Style>
+
+    <!--  Toolbar strip at the top of a pane  -->
+    <Style Selector="Border.toolbar">
+        <Setter Property="Background" Value="{DynamicResource LayerFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="Padding" Value="6,4" />
+    </Style>
+
+    <!--  ── Typography ──  -->
+    <Style Selector="TextBlock.paneTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.sectionHeader">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="ToolTip">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <!--  ── Icon buttons (toolbars) ──  -->
+    <Style Selector="Button.tool">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="MinWidth" Value="{StaticResource ToolButtonSize}" />
+        <Setter Property="Height" Value="{StaticResource ToolButtonSize}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool.active">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+    </Style>
+    <Style Selector="Button.tool PathIcon">
+        <Setter Property="Width" Value="{StaticResource IconSize}" />
+        <Setter Property="Height" Value="{StaticResource IconSize}" />
+    </Style>
+
+    <!--  Thin vertical separator between toolbar groups  -->
+    <Style Selector="Border.toolSeparator">
+        <Setter Property="Width" Value="1" />
+        <Setter Property="Margin" Value="4,6" />
+        <Setter Property="Background" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+    </Style>
+
+    <!--  ── Icons ──  -->
+    <Style Selector="PathIcon.small">
+        <Setter Property="Width" Value="{StaticResource IconSize}" />
+        <Setter Property="Height" Value="{StaticResource IconSize}" />
+    </Style>
+    <Style Selector="PathIcon.file">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+    <Style Selector="PathIcon.folder">
+        <Setter Property="Foreground" Value="{DynamicResource FolderIconBrush}" />
+    </Style>
+
+    <!--  ── Connection state (dot in the tree, tab header and status bar icon) ──  -->
+    <Style Selector="Ellipse.status">
+        <Setter Property="Width" Value="8" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+    <Style Selector="Ellipse.status.busy">
+        <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+    </Style>
+    <Style Selector="Ellipse.status.connected">
+        <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+    </Style>
+    <Style Selector="Ellipse.status.error">
+        <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+    </Style>
+    <Style Selector="PathIcon.status">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+    <Style Selector="PathIcon.status.busy">
+        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+    </Style>
+    <Style Selector="PathIcon.status.connected">
+        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+    </Style>
+
+    <!--  Small counter pill (e.g. number of open tabs of a saved session)  -->
+    <Style Selector="Border.countBadge">
+        <Setter Property="MinWidth" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Padding" Value="5,0" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="CornerRadius" Value="9" />
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.countBadge TextBlock">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <!--  ── Segmented control (Theme="{StaticResource SegmentedTheme}") ──  -->
+    <Style Selector="ListBox.segmented ListBoxItem:selected PathIcon">
+        <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+    </Style>
+
+    <!--  ── Colored file icons (Windows shell icons or vector fallback) ──  -->
+    <Style Selector="Image.fileIcon">
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--  ── Controls ──  -->
+    <Style Selector="TreeViewItem">
+        <Setter Property="MinHeight" Value="28" />
+    </Style>
+    <Style Selector="DataGrid">
+        <Setter Property="RowHeight" Value="28" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="DataGridColumnHeader">
+        <!--  The DataGrid theme uses SystemAltHighColor, which is black in the dark theme  -->
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="ui|FAContentDialog">
+        <Setter Property="CornerRadius" Value="{DynamicResource OverlayCornerRadius}" />
+    </Style>
+</Styles>

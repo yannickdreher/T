@@ -18,20 +18,39 @@ public partial class SshSession : ObservableObject
     /// <summary>
     /// Optional Id of another saved <see cref="SshSession"/> that acts as an SSH
     /// jump host (ProxyJump). When set, the connection is tunneled through that
-    /// session instead of connecting to <see cref="Host"/> directly.
+    /// session instead of connecting to <see cref="Host"/> directly. A jump host
+    /// may itself use a jump host (multi-hop chain).
     /// </summary>
     [ObservableProperty] private string? _proxyJumpSessionId;
 
-    [ObservableProperty] private ConnectionStatus _connectionStatus = ConnectionStatus.Disconnected;
+    /// <summary>"user@host:port" for tooltips (port only when it is not 22).</summary>
+    public string Address =>
+        (string.IsNullOrEmpty(Username) ? "" : Username + "@") + Host + (Port == 22 ? "" : ":" + Port);
 
-    public bool IsConnected => ConnectionStatus == ConnectionStatus.Connected;
-    public bool IsConnecting => ConnectionStatus == ConnectionStatus.Connecting;
-    public bool IsReconnecting => ConnectionStatus == ConnectionStatus.Reconnecting;
+    partial void OnUsernameChanged(string value) => OnPropertyChanged(nameof(Address));
+    partial void OnHostChanged(string value) => OnPropertyChanged(nameof(Address));
+    partial void OnPortChanged(int value) => OnPropertyChanged(nameof(Address));
 
-    partial void OnConnectionStatusChanged(ConnectionStatus value)
+    /// <summary>Creates a detached copy of all persisted fields (used by edit dialogs).</summary>
+    public SshSession Clone()
     {
-        OnPropertyChanged(nameof(IsConnected));
-        OnPropertyChanged(nameof(IsConnecting));
-        OnPropertyChanged(nameof(IsReconnecting));
+        var copy = new SshSession { Id = Id };
+        copy.CopyFrom(this);
+        return copy;
+    }
+
+    /// <summary>Copies all persisted fields from <paramref name="other"/>; identity and runtime state are kept.</summary>
+    public void CopyFrom(SshSession other)
+    {
+        Name = other.Name;
+        Host = other.Host;
+        Port = other.Port;
+        Username = other.Username;
+        Password = other.Password;
+        PrivateKeyPath = other.PrivateKeyPath;
+        PrivateKeyPassword = other.PrivateKeyPassword;
+        FolderId = other.FolderId;
+        Description = other.Description;
+        ProxyJumpSessionId = other.ProxyJumpSessionId;
     }
 }

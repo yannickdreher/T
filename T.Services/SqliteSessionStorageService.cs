@@ -1,4 +1,5 @@
-﻿using Microsoft.Data.Sqlite;
+using System.Globalization;
+using Microsoft.Data.Sqlite;
 using T.Abstractions;
 using T.Models;
 
@@ -6,141 +7,150 @@ namespace T.Services;
 
 public class SqliteSessionStorageService : ISessionStorageService
 {
-    private const int SCHEMA_VERSION = 4;
+    private const int SchemaVersion = 5;
+    private const string SessionColumns =
+        "Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId";
+
     private readonly string _connectionString;
     private readonly IEncryptionService _encryptionService;
 
     public SqliteSessionStorageService(IEncryptionService encryptionService)
+        : this(encryptionService, Path.Combine(AppPaths.DataDirectory, "T.db"))
+    {
+    }
+
+    public SqliteSessionStorageService(IEncryptionService encryptionService, string dbPath)
     {
         _encryptionService = encryptionService;
 
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appData, "T");
-        Directory.CreateDirectory(appFolder);
-        var dbPath = Path.Combine(appFolder, "T.db");
-        _connectionString = $"Data Source={dbPath}";
+        var folder = Path.GetDirectoryName(dbPath)!;
+        Directory.CreateDirectory(folder);
+        if (!OperatingSystem.IsWindows())
+        {
+            // The database holds (encrypted) credentials - keep it private to the user.
+            try { File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath, ForeignKeys = true }.ToString();
         InitializeDatabase();
     }
+
+    // ── Schema ───────────────────────────────────────────────────────────
 
     private void InitializeDatabase()
     {
         using var connection = CreateConnection();
+        using var transaction = connection.BeginTransaction();
 
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
+        // Oldest schema used a "Hosts" table.
+        if (TableExists(connection, "Hosts") && !TableExists(connection, "Sessions"))
+            Execute(connection, "ALTER TABLE Hosts RENAME TO Sessions;");
+
+        Execute(connection, """
             CREATE TABLE IF NOT EXISTS Folders (
-                Id       TEXT PRIMARY KEY,
-                Name     TEXT NOT NULL,
-                ParentId TEXT,
+                Id         TEXT PRIMARY KEY,
+                Name       TEXT NOT NULL,
+                ParentId   TEXT,
                 IsExpanded INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (ParentId) REFERENCES Folders(Id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS Hosts (
-                Id                TEXT PRIMARY KEY,
-                Name              TEXT NOT NULL,
-                Host              TEXT NOT NULL,
-                Port              INTEGER NOT NULL DEFAULT 22,
-                Username          TEXT NOT NULL,
-                Password          TEXT NOT NULL,
-                PrivateKeyPath    TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS Sessions (
+                Id                 TEXT PRIMARY KEY,
+                Name               TEXT NOT NULL,
+                Host               TEXT NOT NULL,
+                Port               INTEGER NOT NULL DEFAULT 22,
+                Username           TEXT NOT NULL,
+                Password           TEXT NOT NULL,
+                PrivateKeyPath     TEXT NOT NULL,
                 PrivateKeyPassword TEXT NOT NULL DEFAULT '',
-                FolderId          TEXT,
-                Description       TEXT NOT NULL,
+                FolderId           TEXT,
+                Description        TEXT NOT NULL,
                 ProxyJumpSessionId TEXT,
                 FOREIGN KEY (FolderId) REFERENCES Folders(Id) ON DELETE SET NULL
             );
-            """;
-        cmd.ExecuteNonQuery();
+            """);
 
-        ApplyMigrations(connection);
+        AddColumnIfMissing(connection, "Folders", "IsExpanded", "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing(connection, "Sessions", "PrivateKeyPassword", "TEXT NOT NULL DEFAULT ''");
+        AddColumnIfMissing(connection, "Sessions", "ProxyJumpSessionId", "TEXT");
+
+        // Previous versions re-created an empty "Hosts" table on every start.
+        if (TableExists(connection, "Hosts") && Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM Hosts;"), CultureInfo.InvariantCulture) == 0)
+            Execute(connection, "DROP TABLE Hosts;");
+
+        if (GetUserVersion(connection) < 5)
+            MigrateSecrets(connection);
+
+        Execute(connection, $"PRAGMA user_version = {SchemaVersion};");
+        transaction.Commit();
     }
 
-    private static void ApplyMigrations(SqliteConnection connection)
+    /// <summary>Re-encrypts secrets that were stored with the legacy encryption format.</summary>
+    private void MigrateSecrets(SqliteConnection connection)
     {
-        var currentVersion = GetUserVersion(connection);
+        var updates = new List<(string Id, string Password, string KeyPassword)>();
 
-        if (currentVersion < 1)
+        using (var cmd = connection.CreateCommand())
         {
-            if (!ColumnExists(connection, "Folders", "IsExpanded"))
+            cmd.CommandText = "SELECT Id, Password, PrivateKeyPassword FROM Sessions;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                using var alter = connection.CreateCommand();
-                alter.CommandText = "ALTER TABLE Folders ADD COLUMN IsExpanded INTEGER NOT NULL DEFAULT 0;";
-                alter.ExecuteNonQuery();
-            }
+                var id = reader.GetString(0);
+                var password = reader.GetString(1);
+                var keyPassword = reader.GetString(2);
 
-            SetUserVersion(connection, 1);
+                if (_encryptionService.NeedsMigration(password) || _encryptionService.NeedsMigration(keyPassword))
+                {
+                    updates.Add((id,
+                        _encryptionService.Encrypt(_encryptionService.Decrypt(password)),
+                        _encryptionService.Encrypt(_encryptionService.Decrypt(keyPassword))));
+                }
+            }
         }
 
-        if (currentVersion < 2)
+        foreach (var (id, password, keyPassword) in updates)
         {
-            // Migration: Hosts -> Sessions umbenennen
-            if (TableExists(connection, "Hosts") && !TableExists(connection, "Sessions"))
-            {
-                using var rename = connection.CreateCommand();
-                rename.CommandText = "ALTER TABLE Hosts RENAME TO Sessions;";
-                rename.ExecuteNonQuery();
-            }
-
-            SetUserVersion(connection, 2);
+            using var update = connection.CreateCommand();
+            update.CommandText = "UPDATE Sessions SET Password = @Password, PrivateKeyPassword = @KeyPassword WHERE Id = @Id;";
+            update.Parameters.AddWithValue("@Password", password);
+            update.Parameters.AddWithValue("@KeyPassword", keyPassword);
+            update.Parameters.AddWithValue("@Id", id);
+            update.ExecuteNonQuery();
         }
-
-        if (currentVersion < 3)
-        {
-            // Migration: PrivateKeyPassword Spalte hinzufügen
-            if (!ColumnExists(connection, "Sessions", "PrivateKeyPassword"))
-            {
-                using var alter = connection.CreateCommand();
-                alter.CommandText = "ALTER TABLE Sessions ADD COLUMN PrivateKeyPassword TEXT NOT NULL DEFAULT '';";
-
-                alter.ExecuteNonQuery();
-            }
-
-            SetUserVersion(connection, 3);
-        }
-
-        if (currentVersion < 4)
-        {
-            // Migration: ProxyJumpSessionId Spalte hinzufügen (SSH Jump Host / ProxyJump)
-            if (!ColumnExists(connection, "Sessions", "ProxyJumpSessionId"))
-            {
-                using var alter = connection.CreateCommand();
-                alter.CommandText = "ALTER TABLE Sessions ADD COLUMN ProxyJumpSessionId TEXT;";
-
-                alter.ExecuteNonQuery();
-            }
-
-            SetUserVersion(connection, 4);
-        }
-
-        if (currentVersion < SCHEMA_VERSION)
-            SetUserVersion(connection, SCHEMA_VERSION);
     }
 
     private SqliteConnection CreateConnection()
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
-
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA foreign_keys = ON;";
-        pragma.ExecuteNonQuery();
-
         return connection;
     }
 
-    private static int GetUserVersion(SqliteConnection connection)
+    private static void Execute(SqliteConnection connection, string sql)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "PRAGMA user_version;";
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
     }
 
-    private static void SetUserVersion(SqliteConnection connection, int version)
+    private static object? Scalar(SqliteConnection connection, string sql)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"PRAGMA user_version = {version};";
-        cmd.ExecuteNonQuery();
+        cmd.CommandText = sql;
+        return cmd.ExecuteScalar();
+    }
+
+    private static int GetUserVersion(SqliteConnection connection) =>
+        Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), CultureInfo.InvariantCulture);
+
+    private static void AddColumnIfMissing(SqliteConnection connection, string table, string column, string definition)
+    {
+        if (!ColumnExists(connection, table, column))
+            Execute(connection, $"ALTER TABLE {table} ADD COLUMN {column} {definition};");
     }
 
     private static bool ColumnExists(SqliteConnection connection, string table, string column)
@@ -161,11 +171,9 @@ public class SqliteSessionStorageService : ISessionStorageService
     private static bool TableExists(SqliteConnection connection, string tableName)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name=@name;";
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=@name;";
         cmd.Parameters.AddWithValue("@name", tableName);
-        
-        using var reader = cmd.ExecuteReader();
-        return reader.Read();
+        return cmd.ExecuteScalar() != null;
     }
 
     // ── Sessions ─────────────────────────────────────────────────────────
@@ -176,13 +184,11 @@ public class SqliteSessionStorageService : ISessionStorageService
 
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId FROM Sessions;";
+        cmd.CommandText = $"SELECT {SessionColumns} FROM Sessions;";
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-        {
             sessions.Add(ReadSession(reader));
-        }
 
         return sessions;
     }
@@ -191,7 +197,7 @@ public class SqliteSessionStorageService : ISessionStorageService
     {
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId FROM Sessions WHERE Id = @Id;";
+        cmd.CommandText = $"SELECT {SessionColumns} FROM Sessions WHERE Id = @Id;";
         cmd.Parameters.AddWithValue("@Id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -202,8 +208,8 @@ public class SqliteSessionStorageService : ISessionStorageService
     {
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO Sessions (Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId)
+        cmd.CommandText = $"""
+            INSERT INTO Sessions ({SessionColumns})
             VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description, @ProxyJumpSessionId);
             """;
         AddSessionParameters(cmd, session);
@@ -225,13 +231,16 @@ public class SqliteSessionStorageService : ISessionStorageService
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>Deletes a session and clears jump host references to it.</summary>
     public async Task DeleteSessionAsync(string id)
     {
         await using var connection = CreateConnection();
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM Sessions WHERE Id = @Id;";
-        cmd.Parameters.AddWithValue("@Id", id);
-        await cmd.ExecuteNonQueryAsync();
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+        await ExecuteAsync(connection, transaction, "UPDATE Sessions SET ProxyJumpSessionId = NULL WHERE ProxyJumpSessionId = @Id;", id);
+        await ExecuteAsync(connection, transaction, "DELETE FROM Sessions WHERE Id = @Id;", id);
+
+        await transaction.CommitAsync();
     }
 
     // ── Folders ──────────────────────────────────────────────────────────
@@ -246,9 +255,7 @@ public class SqliteSessionStorageService : ISessionStorageService
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-        {
             folders.Add(ReadFolder(reader));
-        }
 
         return folders;
     }
@@ -289,16 +296,45 @@ public class SqliteSessionStorageService : ISessionStorageService
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Deletes a folder together with all sub folders and the sessions they contain
+    /// (matching the "delete folder and all its contents" confirmation), and clears
+    /// jump host references to the deleted sessions.
+    /// </summary>
     public async Task DeleteFolderAsync(string id)
     {
         await using var connection = CreateConnection();
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM Folders WHERE Id = @Id;";
-        cmd.Parameters.AddWithValue("@Id", id);
-        await cmd.ExecuteNonQueryAsync();
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+        const string subtree = """
+            WITH RECURSIVE Tree(Id) AS (
+                SELECT @Id
+                UNION ALL
+                SELECT f.Id FROM Folders f JOIN Tree t ON f.ParentId = t.Id
+            )
+            """;
+
+        await ExecuteAsync(connection, transaction, $"""
+            {subtree}
+            UPDATE Sessions SET ProxyJumpSessionId = NULL
+            WHERE ProxyJumpSessionId IN (SELECT Id FROM Sessions WHERE FolderId IN (SELECT Id FROM Tree));
+            """, id);
+        await ExecuteAsync(connection, transaction, $"{subtree} DELETE FROM Sessions WHERE FolderId IN (SELECT Id FROM Tree);", id);
+        await ExecuteAsync(connection, transaction, "DELETE FROM Folders WHERE Id = @Id;", id);
+
+        await transaction.CommitAsync();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private static async Task ExecuteAsync(SqliteConnection connection, SqliteTransaction transaction, string sql, string id)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@Id", id);
+        await cmd.ExecuteNonQueryAsync();
+    }
 
     private SshSession ReadSession(SqliteDataReader reader) => new()
     {
@@ -327,11 +363,11 @@ public class SqliteSessionStorageService : ISessionStorageService
     {
         cmd.Parameters.AddWithValue("@Id", session.Id);
         cmd.Parameters.AddWithValue("@Name", session.Name);
-        cmd.Parameters.AddWithValue("@Host", session.Host);
+        cmd.Parameters.AddWithValue("@Host", session.Host.Trim());
         cmd.Parameters.AddWithValue("@Port", session.Port);
-        cmd.Parameters.AddWithValue("@Username", session.Username);
+        cmd.Parameters.AddWithValue("@Username", session.Username.Trim());
         cmd.Parameters.AddWithValue("@Password", _encryptionService.Encrypt(session.Password));
-        cmd.Parameters.AddWithValue("@PrivateKeyPath", session.PrivateKeyPath);
+        cmd.Parameters.AddWithValue("@PrivateKeyPath", session.PrivateKeyPath.Trim());
         cmd.Parameters.AddWithValue("@PrivateKeyPassword", _encryptionService.Encrypt(session.PrivateKeyPassword));
         cmd.Parameters.AddWithValue("@FolderId", (object?)session.FolderId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Description", session.Description);

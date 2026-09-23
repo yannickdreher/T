@@ -1,14 +1,14 @@
-﻿using Avalonia.Controls;
+using System;
+using System.Threading.Tasks;
+using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Threading.Tasks;
 using T.Abstractions;
 using T.Models;
 using T.UI.Abstractions;
-using T.UI.Views.Dialogs;
 using T.UI.Views;
+using T.UI.Views.Dialogs;
 
 namespace T.UI.ViewModels;
 
@@ -47,21 +47,26 @@ public partial class MainWindowViewModel(
     [RelayCommand]
     private async Task ShowPermissionDialogAsync()
     {
-        if (Host is null || _sessionsTree.ActiveSession?.SelectedFile is null) return;
+        var session = _sessionsTree.ActiveSession;
+        if (Host is null || session is null || session.SelectedFiles.Count == 0) return;
 
-        var vm = PermissionDialogViewModel.FromOctal(_sessionsTree.ActiveSession.SelectedFile.Permissions);
+        // Several items: the dialog starts with the permissions of the first one and applies to all.
+        var selected = session.SelectedFiles;
+        var vm = PermissionDialogViewModel.FromOctal(selected[0].Permissions);
         var dialogContent = _serviceProvider.GetRequiredService<PermissionDialog>();
         dialogContent.DataContext = vm;
 
         var dialog = new FAContentDialog
         {
-            Title = "Permissions", PrimaryButtonText = "Apply", CloseButtonText = "Cancel",
+            Title = selected.Count == 1 ? $"Permissions - {selected[0].Name}" : $"Permissions - {selected.Count} items",
+            PrimaryButtonText = "Apply",
+            CloseButtonText = "Cancel",
             DefaultButton = FAContentDialogButton.Primary,
             Content = dialogContent
         };
 
         if (await dialog.ShowAsync(Host) == FAContentDialogResult.Primary)
-            await _sessionsTree.ActiveSession.ChangePermissionsAsync(vm.ToOctal());
+            await session.ChangePermissionsAsync(vm.ToOctal());
     }
 
     [RelayCommand]
@@ -71,7 +76,8 @@ public partial class MainWindowViewModel(
 
         var dialog = new FAContentDialog
         {
-            Title = "About", CloseButtonText = "Close",
+            Title = "About",
+            CloseButtonText = "Close",
             DefaultButton = FAContentDialogButton.Close,
             Content = _serviceProvider.GetRequiredService<AboutDialog>()
         };

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using T.Abstractions;
 using T.Services;
 using T.UI.Abstractions;
@@ -23,14 +23,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISshManager, SshManager>();
         services.AddSingleton<IWindowProvider, WindowProvider>();
 
-        services.AddTransient<ISshService, SshService>();
-
         // ── ViewModels ──
+        // SessionViewModel and UpdateDialogViewModel need runtime arguments and are
+        // created with ActivatorUtilities.CreateInstance instead of being resolved.
         services.AddSingleton<SessionsTreeViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddTransient<SettingsDialogViewModel>();
-        services.AddTransient<UpdateDialogViewModel>();
-        services.AddTransient<SessionViewModel>();
 
         // ── Dialog Views ──
         services.AddTransient<AboutDialog>();

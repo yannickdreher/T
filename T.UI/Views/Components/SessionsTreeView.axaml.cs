@@ -1,9 +1,9 @@
-﻿using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Interactivity;
-using Avalonia.Input;
-using Avalonia.VisualTree;
 using System;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using T.UI.Abstractions;
 using T.UI.Models;
 using T.UI.ViewModels;
@@ -54,6 +54,27 @@ public partial class SessionsPanel : UserControl
         if (Vm is null) return;
         if (Vm.SelectedTreeNode is SessionTreeNode)
             await Vm.ConnectCommand.ExecuteAsync(null);
+    }
+
+    private async void OnTreeKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (Vm is null) return;
+
+        switch (e.Key)
+        {
+            case Key.Enter when Vm.SelectedTreeNode is SessionTreeNode:
+                e.Handled = true;
+                await Vm.ConnectCommand.ExecuteAsync(null);
+                break;
+            case Key.F2 when Vm.SelectedTreeNode != null:
+                e.Handled = true;
+                await Vm.EditSelectedCommand.ExecuteAsync(null);
+                break;
+            case Key.Delete when Vm.SelectedTreeNode != null:
+                e.Handled = true;
+                await Vm.DeleteSelectedCommand.ExecuteAsync(null);
+                break;
+        }
     }
 
     private void OnEmptyAreaPressed(object? sender, PointerPressedEventArgs e)

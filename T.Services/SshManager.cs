@@ -5,13 +5,14 @@ using T.Models;
 namespace T.Services;
 
 /// <summary>
-/// Factory and registry for SshService instances keyed by session ID.
-/// Registered as singleton in the DI container so all ViewModels share one registry.
+/// Factory and registry of the open <see cref="SshService"/> connections. Each tab gets its own
+/// connection, so the same saved session can be open several times. Registered as singleton;
+/// disposing it (on exit) closes every connection that is still open.
 /// </summary>
 public sealed class SshManager(IServiceProvider serviceProvider) : ISshManager, IDisposable
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider;
-    private readonly Dictionary<string, ISshService> _instances = [];
+    private readonly HashSet<ISshService> _instances = [];
     private readonly Lock _lock = new();
 
     /// <inheritdoc/>
@@ -19,46 +20,38 @@ public sealed class SshManager(IServiceProvider serviceProvider) : ISshManager, 
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        var service = ActivatorUtilities.CreateInstance<SshService>(
+            _serviceProvider,
+            session,
+            cols,
+            rows,
+            pixelWidth,
+            pixelHeight);
+
         lock (_lock)
-        {
-            if (_instances.TryGetValue(session.Id, out var existing))
-                existing.Dispose();
-
-            var svc = ActivatorUtilities.CreateInstance<SshService>(
-                _serviceProvider,
-                session,
-                cols,
-                rows,
-                pixelWidth,
-                pixelHeight);
-
-            _instances[session.Id] = svc;
-            return svc;
-        }
+            _instances.Add(service);
+        return service;
     }
 
     /// <inheritdoc/>
-    public void Release(string sessionId)
+    public void Release(ISshService service)
     {
-        if (string.IsNullOrEmpty(sessionId)) return;
+        ArgumentNullException.ThrowIfNull(service);
 
         lock (_lock)
-        {
-            if (_instances.TryGetValue(sessionId, out var svc))
-            {
-                svc.Dispose();
-                _instances.Remove(sessionId);
-            }
-        }
+            _instances.Remove(service);
+        service.Dispose();
     }
 
     public void Dispose()
     {
+        List<ISshService> open;
         lock (_lock)
         {
-            foreach (var svc in _instances.Values)
-                svc.Dispose();
+            open = [.. _instances];
             _instances.Clear();
         }
+        foreach (var service in open)
+            service.Dispose();
     }
 }

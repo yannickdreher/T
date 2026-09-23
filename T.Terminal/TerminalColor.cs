@@ -26,10 +26,10 @@ public readonly struct TerminalColor : IEquatable<TerminalColor>
     private readonly int _value;
 
     public TerminalColor(int paletteIndex) => _value = paletteIndex;
-    
-    public static TerminalColor FromRgb(byte r, byte g, byte b) => 
+
+    public static TerminalColor FromRgb(byte r, byte g, byte b) =>
         new(0x1000000 | (r << 16) | (g << 8) | b);
-    
+
     public static TerminalColor FromPalette256(int index) => new(index);
 
     public bool IsDefault => _value < 0;
@@ -70,7 +70,7 @@ public readonly struct TerminalColor : IEquatable<TerminalColor>
         ];
 
         if (index < 16) return ansi16[index];
-        
+
         if (index < 232)
         {
             // 216 color cube (6x6x6)
@@ -80,7 +80,7 @@ public readonly struct TerminalColor : IEquatable<TerminalColor>
             int b = (idx % 6) * 51;
             return ((byte)r, (byte)g, (byte)b);
         }
-        
+
         // Grayscale (24 shades)
         int gray = (index - 232) * 10 + 8;
         return ((byte)gray, (byte)gray, (byte)gray);

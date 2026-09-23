@@ -1,19 +1,16 @@
-﻿using Avalonia;
+using System;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
-using Avalonia.Interactivity;
+using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.Threading;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
-using System.Text;
-using System.Threading;
-using T.VT;
-using T.UI.Services;
 using T.UI.ViewModels;
+using T.VT;
 
 namespace T.UI.Controls;
 
@@ -36,46 +33,25 @@ public class TerminalControl : Control
     private bool _isShutdown;
     private bool _isAttached;
     private readonly DispatcherTimer _cursorBlinkTimer;
-    private readonly StringBuilder _textRunBuilder = new(512);
+    private readonly TerminalRowRenderer _renderer = new();
 
     // Input buffering: incoming PTY data is fed to the parser in time-budgeted
     // slices so an infinite stream (e.g. `yes`) cannot starve the UI thread.
+    // Producers append to _incomingBuffer; the parser consumes a detached snapshot
+    // (_processing) by index, so no O(n) StringBuilder.Remove happens per slice.
     private readonly StringBuilder _incomingBuffer = new(16 * 1024);
     private readonly Lock _incomingLock = new();
     private readonly DispatcherTimer _inputTimer;
-    private readonly char[] _feedBuffer = new char[8192];
+    private string _processing = "";
+    private int _processingPos;
+    private const int FeedSliceSize = 8192;
     private const int InputProcessIntervalMs = 8;   // tick rate while data is pending
     private const double InputBudgetMs = 6.0;       // max parser time per tick
     private const int MaxInputBufferSize = 1_000_000; // safety bound
     private const int TrimToSize = 500_000;
 
-    // Render coalescing
-    private readonly DispatcherTimer _renderTimer;
-    private int _pendingDirtyTop = int.MaxValue;
-    private int _pendingDirtyBottom = int.MinValue;
-    private const int RenderCoalesceMs = 16; // ~60 FPS cap for bursts
-
-    // FormattedText cache (reduces GC pressure)
-    private readonly FormattedTextCache _formattedTextCache = new(2048);
-
-    [Flags]
-    private enum RunDecoration : byte { None = 0, Underline = 1, Strikethrough = 2 }
-
-    private sealed class RowRenderCache
-    {
-        public readonly List<(double X, FormattedText Text, RunDecoration Deco, Color Foreground)> TextRuns = new();
-        public readonly List<(Rect Rect, IBrush Brush)> Backgrounds = new();
-        public bool IsDirty = true;
-
-        public void Clear()
-        {
-            TextRuns.Clear();
-            Backgrounds.Clear();
-            IsDirty = true;
-        }
-    }
-
-    private RowRenderCache[] _rowCaches = [];
+    // Rendering is scheduled once per compositor frame (vsync) while the emulator reports damage.
+    private bool _frameRequested;
 
     // Overlay layers (selection below cursor, both above text)
     private readonly OverlayLayer _selectionLayer;
@@ -112,17 +88,22 @@ public class TerminalControl : Control
     private int _pressedMouseButton = -1;
     private int _lastMouseReportCol = -1, _lastMouseReportRow = -1;
 
-    // DECSCUSR override (host-requested cursor shape)
+    // DECSCUSR override (host-requested cursor shape); null = user setting
     private TerminalCursorStyle? _cursorStyleOverride;
-    private bool _cursorBlinkEnabled = true;
+    private bool? _cursorBlinkOverride;
 
-    private readonly Dictionary<Color, SolidColorBrush> _brushCache = [];
-    private readonly Dictionary<Color, Pen> _penCache = [];
+    // Keeps a scrolled-back viewport anchored while new output arrives.
+    private long _lastScrollbackLinesAdded;
+
+    private bool CursorBlinkActive => _cursorBlinkOverride ?? CursorBlink;
+
+    // Text of a key that was already sent as a Ctrl/Alt sequence (see OnKeyDown).
+    private string? _suppressedTextInput;
+
+    // Input method editor support (Chinese, Japanese, Korean, ...).
+    private readonly TerminalInputMethodClient _inputMethodClient;
+
     private static readonly SolidColorBrush SelectionBrush = new(Color.FromArgb(100, 51, 153, 255));
-    private Typeface _typeface;
-    private Typeface _typefaceBold;
-    private Typeface _typefaceItalic;
-    private Typeface _typefaceBoldItalic;
 
     #region Styled Properties
 
@@ -155,6 +136,33 @@ public class TerminalControl : Control
 
     public static readonly StyledProperty<bool> ShowStatsOverlayProperty =
         AvaloniaProperty.Register<TerminalControl, bool>(nameof(ShowStatsOverlay), false);
+
+    public static readonly StyledProperty<bool> CursorBlinkProperty =
+        AvaloniaProperty.Register<TerminalControl, bool>(nameof(CursorBlink), true);
+
+    public static readonly StyledProperty<bool> EnableColorsProperty =
+        AvaloniaProperty.Register<TerminalControl, bool>(nameof(EnableColors), true);
+
+    public static readonly StyledProperty<int> ScrollbackLinesProperty =
+        AvaloniaProperty.Register<TerminalControl, int>(nameof(ScrollbackLines), 10000);
+
+    public bool CursorBlink
+    {
+        get => GetValue(CursorBlinkProperty);
+        set => SetValue(CursorBlinkProperty, value);
+    }
+
+    public bool EnableColors
+    {
+        get => GetValue(EnableColorsProperty);
+        set => SetValue(EnableColorsProperty, value);
+    }
+
+    public int ScrollbackLines
+    {
+        get => GetValue(ScrollbackLinesProperty);
+        set => SetValue(ScrollbackLinesProperty, value);
+    }
 
     public FontFamily FontFamily
     {
@@ -240,12 +248,33 @@ public class TerminalControl : Control
         _inputTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(InputProcessIntervalMs) };
         _inputTimer.Tick += (_, _) => ProcessInputBuffer();
 
-        _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(RenderCoalesceMs) };
-        _renderTimer.Tick += (_, _) =>
-        {
-            _renderTimer.Stop();
-            ProcessPendingChanges();
-        };
+        // Without a client Avalonia disables the IME for this control and CJK input is impossible.
+        _inputMethodClient = new TerminalInputMethodClient(this);
+        TextInputMethodClientRequested += (_, e) => e.Client = _inputMethodClient;
+    }
+
+    /// <summary>
+    /// Minimal IME client: the platform shows its composition window at the terminal cursor
+    /// and commits the result as regular text input.
+    /// </summary>
+    private sealed class TerminalInputMethodClient(TerminalControl owner) : TextInputMethodClient
+    {
+        public override Visual TextViewVisual => owner;
+        public override bool SupportsPreedit => false;
+        public override bool SupportsSurroundingText => false;
+        public override string SurroundingText => "";
+        public override Rect CursorRectangle => owner.GetCursorRectangle();
+        public override TextSelection Selection { get => default; set { } }
+
+        public void NotifyCursorMoved() => RaiseCursorRectangleChanged();
+    }
+
+    private Rect GetCursorRectangle()
+    {
+        var terminal = _terminal;
+        if (terminal == null || _charWidth <= 0) return default;
+        int col = Math.Min(terminal.CursorColumn, terminal.Width - 1);
+        return new Rect(Padding.Left + col * _charWidth, Padding.Top + terminal.CursorRow * _lineHeight, _charWidth, _lineHeight);
     }
 
     static TerminalControl()
@@ -255,6 +284,12 @@ public class TerminalControl : Control
         PaddingProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.OnPaddingChanged());
         DefaultForegroundProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.OnThemeColorsChanged());
         DefaultBackgroundProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.OnThemeColorsChanged());
+        EnableColorsProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.OnThemeColorsChanged());
+        CursorBlinkProperty.Changed.AddClassHandler<TerminalControl>((x, _) => x.RestartCursorBlink());
+        ScrollbackLinesProperty.Changed.AddClassHandler<TerminalControl>((x, _) =>
+        {
+            if (x._terminal != null) x._terminal.MaxScrollback = x.ScrollbackLines;
+        });
         FocusableProperty.OverrideDefaultValue<TerminalControl>(true);
     }
 
@@ -268,7 +303,10 @@ public class TerminalControl : Control
 
     private void OnThemeColorsChanged()
     {
-        InvalidateAllRowCaches();
+        _renderer.DefaultForeground = DefaultForeground;
+        _renderer.DefaultBackground = DefaultBackground;
+        _renderer.EnableColors = EnableColors;
+        _renderer.InvalidateAll();
         InvalidateVisual();
     }
 
@@ -313,48 +351,53 @@ public class TerminalControl : Control
     {
         if (_terminal == null)
         {
-            lock (_incomingLock) { _incomingBuffer.Clear(); }
-            _inputTimer.Stop();
+            // Not laid out yet: keep the data, the timer retries on the next tick.
             return;
         }
 
-        var sw = Stopwatch.StartNew();
+        var start = Stopwatch.GetTimestamp();
 
-        while (sw.Elapsed.TotalMilliseconds < InputBudgetMs)
+        while (Stopwatch.GetElapsedTime(start).TotalMilliseconds < InputBudgetMs)
         {
-            int len;
-            lock (_incomingLock)
+            if (_processingPos >= _processing.Length)
             {
-                len = Math.Min(_feedBuffer.Length, _incomingBuffer.Length);
-                if (len == 0)
+                lock (_incomingLock)
                 {
-                    _inputTimer.Stop();
-                    return;
+                    if (_incomingBuffer.Length == 0)
+                    {
+                        _processing = "";
+                        _processingPos = 0;
+                        _inputTimer.Stop();
+                        return;
+                    }
+                    _processing = _incomingBuffer.ToString();
+                    _incomingBuffer.Clear();
                 }
-                _incomingBuffer.CopyTo(0, _feedBuffer, 0, len);
-                _incomingBuffer.Remove(0, len);
+                _processingPos = 0;
             }
 
+            int len = Math.Min(FeedSliceSize, _processing.Length - _processingPos);
             try
             {
-                _terminal.Feed(_feedBuffer.AsSpan(0, len));
+                _terminal.Feed(_processing.AsSpan(_processingPos, len));
             }
-            catch
+            catch (Exception ex)
             {
-                // swallow parsing errors to keep the control responsive
+                // Keep the control responsive even if the parser hits a bug.
+                Debug.WriteLine($"[TerminalControl] Parser error: {ex}");
             }
+            _processingPos += len;
         }
     }
 
-    /// <summary>
-    /// Return a snapshot of formatted-text cache statistics for UI display.
-    /// </summary>
-    public FormattedTextCache.Stats GetFormattedTextCacheStats() => _formattedTextCache.GetStats();
-
-    /// <summary>
-    /// Clear formatted-text cache and reset its statistics.
-    /// </summary>
-    public void ClearFormattedTextCache() => _formattedTextCache.Clear();
+    private int PendingInputLength
+    {
+        get
+        {
+            lock (_incomingLock)
+                return _incomingBuffer.Length + (_processing.Length - _processingPos);
+        }
+    }
 
     public (uint Columns, uint Rows, uint PixelWidth, uint PixelHeight) GetTerminalSize()
     {
@@ -368,10 +411,7 @@ public class TerminalControl : Control
     {
         ArgumentNullException.ThrowIfNull(vm);
 
-        var cacheStats = _formattedTextCache.GetStats();
-
-        int incomingLen;
-        lock (_incomingLock) { incomingLen = _incomingBuffer.Length; }
+        int incomingLen = PendingInputLength;
 
         var (cols, rows, _, _) = GetTerminalSize();
         int scrollback = _terminal?.Scrollback.Count ?? 0;
@@ -383,94 +423,33 @@ public class TerminalControl : Control
         vm.CharWidth = _charWidth;
         vm.LineHeight = _lineHeight;
 
-        vm.Hits = cacheStats.Hits;
-        vm.Misses = cacheStats.Misses;
-        vm.Inserts = cacheStats.Inserts;
-        vm.Evictions = cacheStats.Evictions;
-        vm.CurrentCount = cacheStats.CurrentCount;
-        vm.Capacity = cacheStats.Capacity;
+        vm.FramesDrawn = _renderer.FramesDrawn;
+        vm.RowsBuilt = _renderer.RowsBuilt;
+        vm.GlyphLookups = _renderer.GlyphLookups;
+        vm.CachedGlyphs = _renderer.CachedGlyphs;
+        vm.FallbackFonts = _renderer.FallbackFonts;
     }
 
     #endregion
 
     #region Layout & Metrics
 
-    private Color ResolveForeground(in TerminalCharacter cell, Color defaultFg)
-    {
-        var fg = cell.Foreground;
-        // Bold-as-bright for the 8 basic ANSI colors (classic terminal behavior)
-        if (cell.IsBold && fg.IsPalette && fg.PaletteIndex < 8)
-            fg = fg.ToBright();
-
-        if (fg.IsDefault) return defaultFg;
-        var (r, g, b) = fg.ToRgb();
-        return Color.FromRgb(r, g, b);
-    }
-
-    private static Color ResolveBackground(in TerminalCharacter cell, Color defaultBg)
-    {
-        if (cell.Background.IsDefault) return defaultBg;
-        var (r, g, b) = cell.Background.ToRgb();
-        return Color.FromRgb(r, g, b);
-    }
-
-    private SolidColorBrush GetBrush(Color color)
-    {
-        if (!_brushCache.TryGetValue(color, out var brush))
-        {
-            if (_brushCache.Count > 512)
-                _brushCache.Clear();
-            brush = new SolidColorBrush(color);
-            _brushCache[color] = brush;
-        }
-        return brush;
-    }
-
-    private Pen GetPen(Color color)
-    {
-        if (!_penCache.TryGetValue(color, out var pen))
-        {
-            if (_penCache.Count > 256)
-                _penCache.Clear();
-            pen = new Pen(GetBrush(color), 1);
-            _penCache[color] = pen;
-        }
-        return pen;
-    }
-
     private void UpdateMetrics()
     {
-        var family = FontFamily;
-        _typeface = new Typeface(family);
-        _typefaceBold = new Typeface(family, FontStyle.Normal, FontWeight.Bold);
-        _typefaceItalic = new Typeface(family, FontStyle.Italic);
-        _typefaceBoldItalic = new Typeface(family, FontStyle.Italic, FontWeight.Bold);
+        var oldWidth = _charWidth;
+        var oldHeight = _lineHeight;
 
-        var testText = new FormattedText("M", CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight, _typeface, FontSize, Brushes.White);
+        _renderer.SetFont(FontFamily, FontSize);
+        _charWidth = _renderer.CharWidth;
+        _lineHeight = _renderer.LineHeight;
 
-        var newCharWidth = testText.WidthIncludingTrailingWhitespace;
-        var newLineHeight = testText.Height;
-
-        bool changed = Math.Abs(_charWidth - newCharWidth) > 0.01 || Math.Abs(_lineHeight - newLineHeight) > 0.01;
-
-        _charWidth = newCharWidth;
-        _lineHeight = newLineHeight;
-
-        if (changed)
+        if (Math.Abs(_charWidth - oldWidth) > 0.01 || Math.Abs(_lineHeight - oldHeight) > 0.01)
         {
-            _formattedTextCache.Clear();
-            InvalidateAllRowCaches();
             InvalidateMeasure();
             InvalidateArrange();
         }
         InvalidateVisual();
         _cursorLayer.InvalidateVisual();
-    }
-
-    private void InvalidateAllRowCaches()
-    {
-        foreach (var c in _rowCaches) c.Clear();
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -485,18 +464,15 @@ public class TerminalControl : Control
         // everything that changed while we weren't rendering.
         if (!_isShutdown && _terminal != null)
         {
-            InvalidateAllRowCaches();
-            _pendingDirtyTop = int.MaxValue;
-            _pendingDirtyBottom = int.MinValue;
+            _renderer.InvalidateAll();
             InvalidateVisual();
             _cursorLayer.InvalidateVisual();
 
             // Resume parsing if data is still pending.
-            lock (_incomingLock)
-            {
-                if (_incomingBuffer.Length > 0 && !_inputTimer.IsEnabled)
-                    _inputTimer.Start();
-            }
+            if (PendingInputLength > 0 && !_inputTimer.IsEnabled)
+                _inputTimer.Start();
+
+            RestartCursorBlink();
         }
     }
 
@@ -507,7 +483,6 @@ public class TerminalControl : Control
 
         // Stop rendering-related timers - there is nothing to paint while detached.
         _cursorBlinkTimer.Stop();
-        if (_renderTimer.IsEnabled) _renderTimer.Stop();
 
         // NOTE: the input timer is intentionally left running so the VirtualTerminal
         // keeps consuming SSH output while the tab is backgrounded. It is stopped
@@ -546,9 +521,8 @@ public class TerminalControl : Control
         {
             _terminalColumns = newColumns;
             _terminalRows = newRows;
-            ResizeCache((int)newRows);
 
-            _terminal = new VirtualTerminal((int)newColumns, (int)newRows);
+            _terminal = new VirtualTerminal((int)newColumns, (int)newRows) { MaxScrollback = ScrollbackLines };
             _terminal.ScreenChanged += OnTerminalScreenChanged;
             _terminal.SendData += OnTerminalSendData;
             _terminal.TitleChanged += OnTerminalTitleChanged;
@@ -560,8 +534,6 @@ public class TerminalControl : Control
         {
             _terminalColumns = newColumns;
             _terminalRows = newRows;
-            ResizeCache((int)newRows);
-            InvalidateAllRowCaches();
             ClearSelection();
 
             _terminal.Resize((int)newColumns, (int)newRows);
@@ -588,10 +560,14 @@ public class TerminalControl : Control
         _isShutdown = true;
 
         _cursorBlinkTimer.Stop();
-        _renderTimer.Stop();
         _inputTimer.Stop();
 
-        lock (_incomingLock) { _incomingBuffer.Clear(); }
+        lock (_incomingLock)
+        {
+            _incomingBuffer.Clear();
+            _processing = "";
+            _processingPos = 0;
+        }
 
         if (_terminal != null)
         {
@@ -604,68 +580,59 @@ public class TerminalControl : Control
 
     private void OnCursorStyleChanged(int style)
     {
-        (_cursorStyleOverride, _cursorBlinkEnabled) = style switch
+        // DECSCUSR 0 (and RIS) restore the user's configured cursor.
+        (_cursorStyleOverride, _cursorBlinkOverride) = style switch
         {
-            0 or 1 => ((TerminalCursorStyle?)TerminalCursorStyle.Block, true),
+            1 => ((TerminalCursorStyle?)TerminalCursorStyle.Block, (bool?)true),
             2 => (TerminalCursorStyle.Block, false),
             3 => (TerminalCursorStyle.Underline, true),
             4 => (TerminalCursorStyle.Underline, false),
             5 => (TerminalCursorStyle.Bar, true),
             6 => (TerminalCursorStyle.Bar, false),
-            _ => (null, true)
+            _ => (null, null)
         };
         RestartCursorBlink();
         _cursorLayer.InvalidateVisual();
     }
 
-    private void ResizeCache(int rows)
-    {
-        if (_rowCaches.Length != rows)
-        {
-            var newCache = new RowRenderCache[rows];
-            for (int i = 0; i < rows; i++) newCache[i] = new RowRenderCache();
-            _rowCaches = newCache;
-        }
-    }
-
-    // Collect dirty ranges and coalesce render calls to reduce redraw frequency
     private void OnTerminalScreenChanged()
     {
-        if (_terminal == null || _rowCaches.Length == 0) return;
+        // Only schedule frames while visible; a detached control repaints fully on re-attach.
+        if (!_isAttached || _isShutdown || _frameRequested) return;
 
-        if (_terminal.DirtyTop <= _terminal.DirtyBottom)
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel == null) return;
+
+        _frameRequested = true;
+        topLevel.RequestAnimationFrame(_ =>
         {
-            int top = Math.Max(0, _terminal.DirtyTop);
-            int bottom = Math.Min(_rowCaches.Length - 1, _terminal.DirtyBottom);
-
-            _pendingDirtyTop = Math.Min(_pendingDirtyTop, top);
-            _pendingDirtyBottom = Math.Max(_pendingDirtyBottom, bottom);
-
-            // Only schedule a repaint while attached; a detached control resolves
-            // all accumulated changes with a full repaint on re-attach.
-            if (_isAttached && !_isShutdown && !_renderTimer.IsEnabled)
-                _renderTimer.Start();
-        }
+            _frameRequested = false;
+            ProcessPendingChanges();
+        });
     }
 
-    // Apply pending changes (clear caches for dirty rows and trigger one InvalidateVisual)
+    /// <summary>Applies the emulator damage to the row caches once per frame and invalidates.</summary>
     private void ProcessPendingChanges()
     {
-        if (_pendingDirtyTop == int.MaxValue || _pendingDirtyBottom == int.MinValue) return;
+        var terminal = _terminal;
+        if (terminal == null || _isShutdown) return;
 
-        int top = _pendingDirtyTop;
-        int bottom = _pendingDirtyBottom;
-        _pendingDirtyTop = int.MaxValue;
-        _pendingDirtyBottom = int.MinValue;
+        long added = terminal.ScrollbackLinesAdded - _lastScrollbackLinesAdded;
+        _lastScrollbackLinesAdded = terminal.ScrollbackLinesAdded;
 
-        top = Math.Max(0, Math.Min(top, _rowCaches.Length - 1));
-        bottom = Math.Max(0, Math.Min(bottom, _rowCaches.Length - 1));
-        for (int i = top; i <= bottom; i++)
-            _rowCaches[i].Clear();
+        // Scrolled back: keep showing the same history lines instead of drifting with the output.
+        if (_scrollOffset > 0)
+            _scrollOffset = (int)Math.Clamp(_scrollOffset + added, 0, terminal.Scrollback.Count);
 
-        // single invalidate for the batch; cursor may have moved with the output
-        InvalidateVisual();
+        if (_renderer.ApplyDamage(terminal, viewportDetached: _scrollOffset > 0))
+        {
+            InvalidateVisual();
+            if (_hasSelectionRange || _isSelecting) _selectionLayer.InvalidateVisual();
+        }
+
+        // The cursor may have moved without any cell change.
         _cursorLayer.InvalidateVisual();
+        _inputMethodClient.NotifyCursorMoved();
     }
 
     #endregion
@@ -680,7 +647,7 @@ public class TerminalControl : Control
         var bounds = new Rect(Bounds.Size);
         var cornerRadius = CornerRadius;
 
-        var bgBrush = GetBrush(defaultBg);
+        var bgBrush = _renderer.GetBrush(defaultBg);
         if (cornerRadius != default)
         {
             var roundedRect = new RoundedRect(bounds, cornerRadius.TopLeft, cornerRadius.TopRight, cornerRadius.BottomRight, cornerRadius.BottomLeft);
@@ -699,172 +666,8 @@ public class TerminalControl : Control
 
     private void RenderContent(DrawingContext context)
     {
-        var terminal = _terminal;
-        if (terminal == null) return;
-
-        int width = terminal.Width;
-        int height = terminal.Height;
-        int scrollbackCount = terminal.Scrollback.Count;
-        int visibleStart = Math.Max(0, scrollbackCount - _scrollOffset);
-
-        double offsetX = Padding.Left;
-        double offsetY = Padding.Top;
-        var defaultFg = DefaultForeground;
-        var defaultBg = DefaultBackground;
-
-        for (int screenRow = 0; screenRow < height; screenRow++)
-        {
-            if (screenRow >= _rowCaches.Length) break;
-
-            int bufferIndex = visibleStart + screenRow;
-            bool isHistory = bufferIndex < scrollbackCount;
-            int rowInBuffer = isHistory ? bufferIndex : (bufferIndex - scrollbackCount);
-
-            if (!isHistory && rowInBuffer >= terminal.Height) break;
-
-            double rowY = offsetY + screenRow * _lineHeight;
-
-            var cache = _rowCaches[screenRow];
-            if (cache.IsDirty)
-            {
-                cache.IsDirty = false;
-                BuildRowCache(cache, terminal, rowInBuffer, width, defaultFg, defaultBg, isHistory);
-            }
-
-            foreach (var bg in cache.Backgrounds)
-            {
-                var r = bg.Rect;
-                context.FillRectangle(bg.Brush, new Rect(r.X + offsetX, r.Y + rowY, r.Width, r.Height));
-            }
-
-            foreach (var run in cache.TextRuns)
-            {
-                context.DrawText(run.Text, new Point(run.X + offsetX, rowY));
-
-                if (run.Deco != RunDecoration.None)
-                {
-                    var pen = GetPen(run.Foreground);
-                    double runEnd = run.X + offsetX + run.Text.WidthIncludingTrailingWhitespace;
-
-                    if ((run.Deco & RunDecoration.Underline) != 0)
-                    {
-                        double y = rowY + _lineHeight - 1.5;
-                        context.DrawLine(pen, new Point(run.X + offsetX, y), new Point(runEnd, y));
-                    }
-                    if ((run.Deco & RunDecoration.Strikethrough) != 0)
-                    {
-                        double y = rowY + _lineHeight * 0.55;
-                        context.DrawLine(pen, new Point(run.X + offsetX, y), new Point(runEnd, y));
-                    }
-                }
-            }
-        }
-    }
-
-    private void BuildRowCache(RowRenderCache cache, VirtualTerminal terminal, int rowInBuffer, int width, Color defaultFg, Color defaultBg, bool isHistory)
-    {
-        int bgRunStart = -1;
-        Color currentBg = defaultBg;
-
-        int textRunStart = -1;
-        Color currentTextFg = defaultFg;
-        bool currentBold = false;
-        bool currentItalic = false;
-        RunDecoration currentDeco = RunDecoration.None;
-        _textRunBuilder.Clear();
-
-        TerminalLine? historyLine = isHistory ? terminal.Scrollback[rowInBuffer] : null;
-
-        for (int col = 0; col < width; col++)
-        {
-            TerminalCharacter cell = historyLine != null
-                ? (col < historyLine.Length ? historyLine[col] : TerminalCharacter.Blank)
-                : terminal.GetCell(col, rowInBuffer);
-
-            var cellFg = ResolveForeground(in cell, defaultFg);
-            var cellBg = ResolveBackground(in cell, defaultBg);
-
-            if (cell.IsInverse) (cellFg, cellBg) = (cellBg, cellFg);
-
-            if (cell.IsDim)
-            {
-                // Blend toward the background to fake reduced intensity
-                cellFg = Color.FromRgb(
-                    (byte)((cellFg.R + cellBg.R) / 2),
-                    (byte)((cellFg.G + cellBg.G) / 2),
-                    (byte)((cellFg.B + cellBg.B) / 2));
-            }
-
-            if (cellBg != currentBg)
-            {
-                if (bgRunStart != -1 && currentBg != defaultBg)
-                {
-                    double runX = bgRunStart * _charWidth;
-                    double runW = (col - bgRunStart) * _charWidth;
-                    cache.Backgrounds.Add((new Rect(runX, 0, runW, _lineHeight), GetBrush(currentBg)));
-                }
-                currentBg = cellBg;
-                bgRunStart = col;
-            }
-
-            char c = (cell.Char == '\0' || cell.IsHidden) ? ' ' : cell.Char;
-
-            var deco = (cell.IsUnderline ? RunDecoration.Underline : RunDecoration.None)
-                     | (cell.IsStrikethrough ? RunDecoration.Strikethrough : RunDecoration.None);
-
-            if (cellFg != currentTextFg || cell.IsBold != currentBold || cell.IsItalic != currentItalic || deco != currentDeco)
-            {
-                AddTextRunToCache(cache, _textRunBuilder, textRunStart, currentTextFg, currentBold, currentItalic, currentDeco);
-                textRunStart = col;
-                currentTextFg = cellFg;
-                currentBold = cell.IsBold;
-                currentItalic = cell.IsItalic;
-                currentDeco = deco;
-            }
-            else if (textRunStart == -1)
-            {
-                textRunStart = col;
-                currentTextFg = cellFg;
-                currentBold = cell.IsBold;
-                currentItalic = cell.IsItalic;
-                currentDeco = deco;
-            }
-            _textRunBuilder.Append(c);
-        }
-
-        if (bgRunStart != -1 && currentBg != defaultBg)
-        {
-            double runX = bgRunStart * _charWidth;
-            cache.Backgrounds.Add((new Rect(runX, 0, (width - bgRunStart) * _charWidth, _lineHeight), GetBrush(currentBg)));
-        }
-        AddTextRunToCache(cache, _textRunBuilder, textRunStart, currentTextFg, currentBold, currentItalic, currentDeco);
-    }
-
-    private void AddTextRunToCache(RowRenderCache cache, StringBuilder sb, int startCol, Color fg, bool bold, bool italic, RunDecoration deco)
-    {
-        if (sb.Length == 0 || startCol == -1)
-        {
-            sb.Clear();
-            return;
-        }
-
-        string text = sb.ToString();
-        sb.Clear();
-
-        if (deco == RunDecoration.None && string.IsNullOrWhiteSpace(text)) return;
-
-        double x = startCol * _charWidth;
-        var tf = (bold, italic) switch
-        {
-            (true, true) => _typefaceBoldItalic,
-            (true, false) => _typefaceBold,
-            (false, true) => _typefaceItalic,
-            _ => _typeface
-        };
-
-        var ft = _formattedTextCache.GetOrCreate(text, tf, FontSize, fg);
-
-        cache.TextRuns.Add((x, ft, deco, fg));
+        if (_terminal == null) return;
+        _renderer.Draw(context, _terminal, _scrollOffset, new Point(Padding.Left, Padding.Top));
     }
 
     // ----- Cursor layer -----
@@ -882,12 +685,17 @@ public class TerminalControl : Control
         double x = Padding.Left + cursorCol * _charWidth;
         double y = Padding.Top + cursorRow * _lineHeight;
 
+        // On a double-width character the block and underline cursors cover both cells.
+        var cell = terminal.GetCell(cursorCol, cursorRow);
+        int cells = cell.IsWide && terminal.GetCell(cursorCol + 1, cursorRow).IsWideContinuation ? 2 : 1;
+        double cellWidth = _charWidth * cells;
+
         var style = _cursorStyleOverride ?? CursorStyle;
         Rect cursorRect = style switch
         {
-            TerminalCursorStyle.Block => new Rect(x, y, _charWidth, _lineHeight),
+            TerminalCursorStyle.Block => new Rect(x, y, cellWidth, _lineHeight),
             TerminalCursorStyle.Bar => new Rect(x, y, Math.Max(1.5, _charWidth * 0.12), _lineHeight),
-            TerminalCursorStyle.Underline => new Rect(x, y + _lineHeight - 2, _charWidth, 2),
+            TerminalCursorStyle.Underline => new Rect(x, y + _lineHeight - 2, cellWidth, 2),
             _ => new Rect(x, y, 2, _lineHeight)
         };
 
@@ -895,38 +703,32 @@ public class TerminalControl : Control
 
         if (_hasFocus)
         {
-            if (_cursorBlink || !_cursorBlinkEnabled)
+            if (_cursorBlink || !CursorBlinkActive)
             {
                 if (style == TerminalCursorStyle.Block)
                 {
                     // Block cursor inverts the cell: filled box + glyph in background color
-                    context.FillRectangle(GetBrush(cursorColor), cursorRect);
-                    var cell = terminal.GetCell(cursorCol, cursorRow);
-                    char ch = (cell.Char == '\0' || cell.IsHidden) ? ' ' : cell.Char;
-                    if (ch != ' ')
-                    {
-                        var ft = _formattedTextCache.GetOrCreate(ch.ToString(), _typeface, FontSize, DefaultBackground);
-                        context.DrawText(ft, new Point(x, y));
-                    }
+                    context.FillRectangle(_renderer.GetBrush(cursorColor), cursorRect);
+                    _renderer.DrawCell(context, cell, cells, terminal.Graphemes, new Point(x, y), DefaultBackground);
                 }
                 else
                 {
-                    context.FillRectangle(GetBrush(cursorColor), cursorRect);
+                    context.FillRectangle(_renderer.GetBrush(cursorColor), cursorRect);
                 }
             }
         }
         else
         {
             // Unfocused: hollow outline (Windows Terminal style)
-            var outline = new Rect(x + 0.5, y + 0.5, Math.Max(1, _charWidth - 1), Math.Max(1, _lineHeight - 1));
-            context.DrawRectangle(null, GetPen(Color.FromArgb(180, cursorColor.R, cursorColor.G, cursorColor.B)), outline);
+            var outline = new Rect(x + 0.5, y + 0.5, Math.Max(1, cellWidth - 1), Math.Max(1, _lineHeight - 1));
+            context.DrawRectangle(null, _renderer.GetPen(Color.FromArgb(180, cursorColor.R, cursorColor.G, cursorColor.B)), outline);
         }
     }
 
     private void RestartCursorBlink()
     {
         _cursorBlink = true;
-        if (_hasFocus && _cursorBlinkEnabled)
+        if (_hasFocus && _isAttached && CursorBlinkActive)
         {
             _cursorBlinkTimer.Stop();
             _cursorBlinkTimer.Start();
@@ -962,6 +764,7 @@ public class TerminalControl : Control
             int sc = absRow == startAbs ? startCol : 0;
             int ec = absRow == endAbs ? endCol : width;
             if (sc >= ec) continue;
+            (sc, ec) = SnapToCharacters(sc, ec, absRow);
 
             var rect = new Rect(
                 offsetX + sc * _charWidth,
@@ -1015,21 +818,40 @@ public class TerminalControl : Control
         return _terminal.GetCell(col, absRow - scrollbackCount);
     }
 
-    private static bool IsWordChar(char c) =>
-        !char.IsWhiteSpace(c) && c is not ('\0' or '(' or ')' or '[' or ']' or '{' or '}' or '\'' or '"' or ',' or ';' or '|' or '<' or '>' or '&');
+    /// <summary>Widens a column range so it never contains only one half of a double-width character.</summary>
+    private (int start, int end) SnapToCharacters(int start, int end, int absRow)
+    {
+        if (start > 0 && GetCellAbsolute(start, absRow).IsWideContinuation) start--;
+        if (end > 0 && end < TerminalWidth && GetCellAbsolute(end - 1, absRow).IsWide) end++;
+        return (start, end);
+    }
+
+    private static bool IsWordChar(int codePoint) =>
+        codePoint > 0 &&
+        !(codePoint <= 0xFFFF && char.IsWhiteSpace((char)codePoint)) &&
+        codePoint is not ('(' or ')' or '[' or ']' or '{' or '}' or '\'' or '"' or ',' or ';' or '|' or '<' or '>' or '&');
+
+    /// <summary>Base character of a cell for word selection; the right half of a wide character counts as that character.</summary>
+    private int WordCodePointAt(int col, int absRow)
+    {
+        var cell = GetCellAbsolute(col, absRow);
+        if (cell.IsWideContinuation && col > 0)
+            cell = GetCellAbsolute(col - 1, absRow);
+        return _terminal?.Graphemes.GetBaseCodePoint(cell.CodePoint) ?? cell.CodePoint;
+    }
 
     private (int start, int end) WordBoundsAt(int col, int absRow)
     {
         int width = TerminalWidth;
         col = Math.Clamp(col, 0, width - 1);
 
-        if (!IsWordChar(GetCellAbsolute(col, absRow).Char))
-            return (col, Math.Min(col + 1, width));
+        if (!IsWordChar(WordCodePointAt(col, absRow)))
+            return SnapToCharacters(col, Math.Min(col + 1, width), absRow);
 
         int start = col, end = col + 1;
-        while (start > 0 && IsWordChar(GetCellAbsolute(start - 1, absRow).Char)) start--;
-        while (end < width && IsWordChar(GetCellAbsolute(end, absRow).Char)) end++;
-        return (start, end);
+        while (start > 0 && IsWordChar(WordCodePointAt(start - 1, absRow))) start--;
+        while (end < width && IsWordChar(WordCodePointAt(end, absRow))) end++;
+        return SnapToCharacters(start, end, absRow);
     }
 
     private string GetSelectedText()
@@ -1044,12 +866,14 @@ public class TerminalControl : Control
         {
             int sc = absRow == startAbs ? startCol : 0;
             int ec = absRow == endAbs ? endCol : width;
+            (sc, ec) = SnapToCharacters(sc, ec, absRow);
 
             int lineEnd = sb.Length;
             for (int col = sc; col < ec; col++)
             {
                 var cell = GetCellAbsolute(col, absRow);
-                sb.Append(cell.Char == '\0' ? ' ' : cell.Char);
+                if (cell.IsWideContinuation) continue; // the character was appended with its left half
+                _terminal.Graphemes.AppendText(sb, cell.CodePoint);
             }
 
             // Trim trailing whitespace per line (standard terminal copy behavior)
@@ -1156,35 +980,35 @@ public class TerminalControl : Control
         switch (_selectionMode)
         {
             case SelectionMode.Word:
-            {
-                var (ws, we) = WordBoundsAt(hitCol, hitAbsRow);
-                _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
-                _selAnchorStartCol = ws;
-                _selAnchorEndCol = we;
-                _selStartAbsRow = hitAbsRow; _selStartCol = ws;
-                _selEndAbsRow = hitAbsRow; _selEndCol = we;
-                _hasSelectionRange = true;
-                break;
-            }
+                {
+                    var (ws, we) = WordBoundsAt(hitCol, hitAbsRow);
+                    _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
+                    _selAnchorStartCol = ws;
+                    _selAnchorEndCol = we;
+                    _selStartAbsRow = hitAbsRow; _selStartCol = ws;
+                    _selEndAbsRow = hitAbsRow; _selEndCol = we;
+                    _hasSelectionRange = true;
+                    break;
+                }
             case SelectionMode.Line:
-            {
-                _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
-                _selAnchorStartCol = 0;
-                _selAnchorEndCol = TerminalWidth;
-                _selStartAbsRow = hitAbsRow; _selStartCol = 0;
-                _selEndAbsRow = hitAbsRow; _selEndCol = TerminalWidth;
-                _hasSelectionRange = true;
-                break;
-            }
+                {
+                    _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
+                    _selAnchorStartCol = 0;
+                    _selAnchorEndCol = TerminalWidth;
+                    _selStartAbsRow = hitAbsRow; _selStartCol = 0;
+                    _selEndAbsRow = hitAbsRow; _selEndCol = TerminalWidth;
+                    _hasSelectionRange = true;
+                    break;
+                }
             default:
-            {
-                _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
-                _selAnchorStartCol = _selAnchorEndCol = hitCol;
-                _selStartAbsRow = _selEndAbsRow = hitAbsRow;
-                _selStartCol = _selEndCol = hitCol;
-                _hasSelectionRange = false; // becomes true once the pointer moves
-                break;
-            }
+                {
+                    _selAnchorStartAbsRow = _selAnchorEndAbsRow = hitAbsRow;
+                    _selAnchorStartCol = _selAnchorEndCol = hitCol;
+                    _selStartAbsRow = _selEndAbsRow = hitAbsRow;
+                    _selStartCol = _selEndCol = hitCol;
+                    _hasSelectionRange = false; // becomes true once the pointer moves
+                    break;
+                }
         }
 
         _isSelecting = true;
@@ -1234,48 +1058,48 @@ public class TerminalControl : Control
         switch (_selectionMode)
         {
             case SelectionMode.Word:
-            {
-                var (ws, we) = WordBoundsAt(Math.Min(hitCol, TerminalWidth - 1), hitAbsRow);
-                bool before = hitAbsRow < _selAnchorStartAbsRow ||
-                              (hitAbsRow == _selAnchorStartAbsRow && ws < _selAnchorStartCol);
-                if (before)
                 {
-                    _selStartAbsRow = hitAbsRow; _selStartCol = ws;
-                    _selEndAbsRow = _selAnchorEndAbsRow; _selEndCol = _selAnchorEndCol;
+                    var (ws, we) = WordBoundsAt(Math.Min(hitCol, TerminalWidth - 1), hitAbsRow);
+                    bool before = hitAbsRow < _selAnchorStartAbsRow ||
+                                  (hitAbsRow == _selAnchorStartAbsRow && ws < _selAnchorStartCol);
+                    if (before)
+                    {
+                        _selStartAbsRow = hitAbsRow; _selStartCol = ws;
+                        _selEndAbsRow = _selAnchorEndAbsRow; _selEndCol = _selAnchorEndCol;
+                    }
+                    else
+                    {
+                        _selStartAbsRow = _selAnchorStartAbsRow; _selStartCol = _selAnchorStartCol;
+                        _selEndAbsRow = hitAbsRow; _selEndCol = we;
+                    }
+                    _hasSelectionRange = true;
+                    break;
                 }
-                else
-                {
-                    _selStartAbsRow = _selAnchorStartAbsRow; _selStartCol = _selAnchorStartCol;
-                    _selEndAbsRow = hitAbsRow; _selEndCol = we;
-                }
-                _hasSelectionRange = true;
-                break;
-            }
             case SelectionMode.Line:
-            {
-                if (hitAbsRow < _selAnchorStartAbsRow)
                 {
-                    _selStartAbsRow = hitAbsRow; _selStartCol = 0;
-                    _selEndAbsRow = _selAnchorEndAbsRow; _selEndCol = TerminalWidth;
+                    if (hitAbsRow < _selAnchorStartAbsRow)
+                    {
+                        _selStartAbsRow = hitAbsRow; _selStartCol = 0;
+                        _selEndAbsRow = _selAnchorEndAbsRow; _selEndCol = TerminalWidth;
+                    }
+                    else
+                    {
+                        _selStartAbsRow = _selAnchorStartAbsRow; _selStartCol = 0;
+                        _selEndAbsRow = hitAbsRow; _selEndCol = TerminalWidth;
+                    }
+                    _hasSelectionRange = true;
+                    break;
                 }
-                else
-                {
-                    _selStartAbsRow = _selAnchorStartAbsRow; _selStartCol = 0;
-                    _selEndAbsRow = hitAbsRow; _selEndCol = TerminalWidth;
-                }
-                _hasSelectionRange = true;
-                break;
-            }
             default:
-            {
-                if (hitCol != _selEndCol || hitAbsRow != _selEndAbsRow)
                 {
-                    _selEndCol = hitCol;
-                    _selEndAbsRow = hitAbsRow;
-                    _hasSelectionRange = _selStartAbsRow != _selEndAbsRow || _selStartCol != _selEndCol;
+                    if (hitCol != _selEndCol || hitAbsRow != _selEndAbsRow)
+                    {
+                        _selEndCol = hitCol;
+                        _selEndAbsRow = hitAbsRow;
+                        _hasSelectionRange = _selStartAbsRow != _selEndAbsRow || _selStartCol != _selEndCol;
+                    }
+                    break;
                 }
-                break;
-            }
         }
 
         _selectionLayer.InvalidateVisual();
@@ -1361,6 +1185,7 @@ public class TerminalControl : Control
     private void ScrollViewportBy(int lines)
     {
         if (_terminal == null || lines == 0) return;
+        _lastScrollbackLinesAdded = _terminal.ScrollbackLinesAdded;
         var maxScroll = Math.Max(0, _terminal.Scrollback.Count);
         var newOffset = Math.Clamp(_scrollOffset + lines, 0, maxScroll);
         SetScrollOffset(newOffset);
@@ -1370,7 +1195,7 @@ public class TerminalControl : Control
     {
         if (newOffset == _scrollOffset) return;
         _scrollOffset = newOffset;
-        InvalidateAllRowCaches();
+        _renderer.InvalidateAll();
         InvalidateVisual();
         _selectionLayer.InvalidateVisual();
         _cursorLayer.InvalidateVisual();
@@ -1455,18 +1280,22 @@ public class TerminalControl : Control
         if (_hasSelectionRange && !ctrl && !shift && !alt)
             ClearSelection();
 
-        var consoleKey = MapKey(e.Key);
-        if (consoleKey != null)
-        {
-            var sequence = KeyboardTranslations.TranslateKey(
-                consoleKey.Value, ctrl, alt, shift,
-                applicationMode: _terminal?.ApplicationCursorKeys ?? false);
+        _suppressedTextInput = null;
 
-            if (sequence != null)
-            {
-                InputReceived?.Invoke(sequence);
-                e.Handled = true;
-            }
+        var press = new KeyboardTranslations.KeyPress(MapKey(e.Key), MapPhysicalLetter(e.PhysicalKey), e.KeySymbol, ctrl, alt, shift);
+        var sequence = KeyboardTranslations.Translate(
+            press,
+            applicationCursorKeys: _terminal?.ApplicationCursorKeys ?? false,
+            optionKeyProducesText: OperatingSystem.IsMacOS());
+
+        if (sequence != null)
+        {
+            InputReceived?.Invoke(sequence);
+            e.Handled = true;
+
+            // Some platforms still raise TextInput for a handled Ctrl/Alt combination
+            // (e.g. "x" after Alt+X); that character must not be sent a second time.
+            if (ctrl || alt) _suppressedTextInput = e.KeySymbol;
         }
 
         RestartCursorBlink();
@@ -1474,6 +1303,14 @@ public class TerminalControl : Control
 
     protected override void OnTextInput(TextInputEventArgs e)
     {
+        if (_suppressedTextInput != null && e.Text == _suppressedTextInput)
+        {
+            _suppressedTextInput = null;
+            e.Handled = true;
+            return;
+        }
+        _suppressedTextInput = null;
+
         if (!string.IsNullOrEmpty(e.Text))
         {
             if (_scrollOffset != 0)
@@ -1525,6 +1362,9 @@ public class TerminalControl : Control
             {
                 text = text.Replace("\r\n", "\r").Replace("\n", "\r");
 
+                // A pasted "ESC [201~" would end bracketed paste early and let the rest execute.
+                text = text.Replace("\x1b[200~", "").Replace("\x1b[201~", "");
+
                 // Bracketed paste lets shells/editors treat the block atomically
                 text = KeyboardTranslations.WrapForBracketedPaste(
                     text, _terminal?.BracketedPasteMode ?? false);
@@ -1535,6 +1375,10 @@ public class TerminalControl : Control
         }
         catch { /* Ignore clipboard errors */ }
     }
+
+    /// <summary>Latin letter at this physical key position (US layout), used for Ctrl/Alt shortcuts on non-Latin layouts.</summary>
+    private static ConsoleKey? MapPhysicalLetter(PhysicalKey key) =>
+        key is >= PhysicalKey.A and <= PhysicalKey.Z ? ConsoleKey.A + (key - PhysicalKey.A) : null;
 
     private static ConsoleKey? MapKey(Key key) => key switch
     {
