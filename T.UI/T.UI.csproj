@@ -14,8 +14,12 @@
     <RootNamespace>T.UI</RootNamespace>
     <!-- Windows shell icon interop (LibraryImport, COM vtable call) -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Precompiled code in published builds: the main window opens in ~0.6 s instead of ~1.1 s (no JIT at start). -->
-    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != ''">true</PublishReadyToRun>
+    <!--
+      Precompiled code in published builds: the main window opens in ~0.6 s instead of ~1.1 s (no JIT at start).
+      Also on during "dotnet restore -r <rid>", which sets RuntimeIdentifiers (plural): the restore has to
+      download the ReadyToRun compiler, otherwise "dotnet publish -no-restore" fails with NETSDK1094.
+    -->
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' or '$(RuntimeIdentifiers)' != ''">true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>
