@@ -387,6 +387,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
 
         // Sessions that (transitively) jump through this one would create a loop.
         dialogContent.AddProxySessions(proxyCandidates.Where(s => !JumpsThrough(s, session.Id)));
+        dialogContent.AddStepProfiles(_settingsService?.Current.Step.Profiles ?? []);
 
         var dialog = new FAContentDialog
         {
@@ -408,6 +409,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
             return false;
 
         session.ProxyJumpSessionId = dialogContent.SelectedProxySessionId;
+        session.StepProfileId = dialogContent.SelectedStepProfileId;
         session.Host = session.Host.Trim();
         session.Username = session.Username.Trim();
         if (string.IsNullOrWhiteSpace(session.Name))

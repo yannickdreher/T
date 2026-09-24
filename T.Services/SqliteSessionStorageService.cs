@@ -9,7 +9,7 @@ public class SqliteSessionStorageService : ISessionStorageService
 {
     private const int SchemaVersion = 5;
     private const string SessionColumns =
-        "Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId";
+        "Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId, StepProfileId";
 
     private readonly string _connectionString;
     private readonly IEncryptionService _encryptionService;
@@ -69,6 +69,7 @@ public class SqliteSessionStorageService : ISessionStorageService
                 FolderId           TEXT,
                 Description        TEXT NOT NULL,
                 ProxyJumpSessionId TEXT,
+                StepProfileId      TEXT,
                 FOREIGN KEY (FolderId) REFERENCES Folders(Id) ON DELETE SET NULL
             );
             """);
@@ -76,6 +77,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         AddColumnIfMissing(connection, "Folders", "IsExpanded", "INTEGER NOT NULL DEFAULT 0");
         AddColumnIfMissing(connection, "Sessions", "PrivateKeyPassword", "TEXT NOT NULL DEFAULT ''");
         AddColumnIfMissing(connection, "Sessions", "ProxyJumpSessionId", "TEXT");
+        AddColumnIfMissing(connection, "Sessions", "StepProfileId", "TEXT");
 
         // Previous versions re-created an empty "Hosts" table on every start.
         if (TableExists(connection, "Hosts") && Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM Hosts;"), CultureInfo.InvariantCulture) == 0)
@@ -210,7 +212,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = $"""
             INSERT INTO Sessions ({SessionColumns})
-            VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description, @ProxyJumpSessionId);
+            VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description, @ProxyJumpSessionId, @StepProfileId);
             """;
         AddSessionParameters(cmd, session);
         await cmd.ExecuteNonQueryAsync();
@@ -224,7 +226,8 @@ public class SqliteSessionStorageService : ISessionStorageService
             UPDATE Sessions
             SET Name = @Name, Host = @Host, Port = @Port, Username = @Username,
                 Password = @Password, PrivateKeyPath = @PrivateKeyPath, PrivateKeyPassword = @PrivateKeyPassword,
-                FolderId = @FolderId, Description = @Description, ProxyJumpSessionId = @ProxyJumpSessionId
+                FolderId = @FolderId, Description = @Description, ProxyJumpSessionId = @ProxyJumpSessionId,
+                StepProfileId = @StepProfileId
             WHERE Id = @Id;
             """;
         AddSessionParameters(cmd, session);
@@ -348,7 +351,8 @@ public class SqliteSessionStorageService : ISessionStorageService
         PrivateKeyPassword = _encryptionService.Decrypt(reader.GetString(7)),
         FolderId = reader.IsDBNull(8) ? null : reader.GetString(8),
         Description = reader.GetString(9),
-        ProxyJumpSessionId = reader.IsDBNull(10) ? null : reader.GetString(10)
+        ProxyJumpSessionId = reader.IsDBNull(10) ? null : reader.GetString(10),
+        StepProfileId = reader.IsDBNull(11) ? null : reader.GetString(11)
     };
 
     private static Folder ReadFolder(SqliteDataReader reader) => new()
@@ -372,6 +376,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         cmd.Parameters.AddWithValue("@FolderId", (object?)session.FolderId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Description", session.Description);
         cmd.Parameters.AddWithValue("@ProxyJumpSessionId", (object?)session.ProxyJumpSessionId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@StepProfileId", (object?)session.StepProfileId ?? DBNull.Value);
     }
 
     private static void AddFolderParameters(SqliteCommand cmd, Folder folder)

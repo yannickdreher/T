@@ -23,6 +23,12 @@ public partial class SshSession : ObservableObject
     /// </summary>
     [ObservableProperty] private string? _proxyJumpSessionId;
 
+    /// <summary>
+    /// Optional Id of a <see cref="StepCaProfile"/>. When set, a short-lived SSH certificate
+    /// from that step-ca is offered first (requested with the step CLI when needed).
+    /// </summary>
+    [ObservableProperty] private string? _stepProfileId;
+
     /// <summary>"user@host:port" for tooltips (port only when it is not 22).</summary>
     public string Address =>
         (string.IsNullOrEmpty(Username) ? "" : Username + "@") + Host + (Port == 22 ? "" : ":" + Port);
@@ -52,5 +58,6 @@ public partial class SshSession : ObservableObject
         FolderId = other.FolderId;
         Description = other.Description;
         ProxyJumpSessionId = other.ProxyJumpSessionId;
+        StepProfileId = other.StepProfileId;
     }
 }

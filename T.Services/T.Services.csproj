@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="T.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\T.Abstractions\T.Abstractions.csproj" />
     <ProjectReference Include="..\T.Models\T.Models.csproj" />
   </ItemGroup>

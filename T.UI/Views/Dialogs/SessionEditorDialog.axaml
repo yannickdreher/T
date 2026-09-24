@@ -55,6 +55,10 @@
                  PlaceholderText="Key passphrase (if the key is encrypted)"
                  Text="{Binding PrivateKeyPassword}" />
         <TextBlock Classes="hint" Text="Without a key file the default keys ~/.ssh/id_ed25519, id_ecdsa and id_rsa are offered (see Settings)." />
+        <StackPanel Spacing="4">
+            <TextBlock Classes="hint" Text="SSH certificate from step-ca (offered first, CAs are set up in Settings)" />
+            <ComboBox x:Name="StepProfileCombo" HorizontalAlignment="Stretch" />
+        </StackPanel>
 
         <TextBlock Classes="sectionHeader" Text="Notes" />
         <TextBox MinHeight="56"

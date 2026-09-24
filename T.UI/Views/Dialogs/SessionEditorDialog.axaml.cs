@@ -22,7 +22,27 @@ public partial class SessionEditorDialog : UserControl
             : "None (direct connection)";
     }
 
+    /// <summary>An entry of the step-ca drop-down; <see cref="Profile"/> is null for "None".</summary>
+    private sealed class StepOption(StepCaProfile? profile)
+    {
+        public StepCaProfile? Profile { get; } = profile;
+        public override string ToString() => Profile?.Name is { Length: > 0 } name
+            ? name
+            : "None";
+    }
+
     private readonly List<ProxyOption> _proxyOptions = [new ProxyOption(null)];
+    private readonly List<StepOption> _stepOptions = [new StepOption(null)];
+
+    /// <summary>step-ca profiles that can be selected for the session (a "None" entry is always present).</summary>
+    public void AddStepProfiles(IEnumerable<StepCaProfile> profiles)
+    {
+        foreach (var profile in profiles)
+            _stepOptions.Add(new StepOption(profile));
+    }
+
+    /// <summary>Id of the selected step-ca profile, or null for "None".</summary>
+    public string? SelectedStepProfileId => (StepProfileCombo.SelectedItem as StepOption)?.Profile?.Id;
 
     /// <summary>
     /// Saved sessions that can be selected as the SSH jump host (ProxyJump) for
@@ -72,6 +92,12 @@ public partial class SessionEditorDialog : UserControl
         var index = _proxyOptions.FindIndex(o => o.Session?.Id == proxyJumpSessionId);
 
         ProxyJumpCombo.SelectedIndex = index >= 0 ? index : 0;
+
+        // A profile that was deleted in the meantime shows as "None".
+        StepProfileCombo.ItemsSource = _stepOptions;
+        var stepProfileId = (DataContext as SshSession)?.StepProfileId;
+        var stepIndex = _stepOptions.FindIndex(o => o.Profile != null && o.Profile.Id == stepProfileId);
+        StepProfileCombo.SelectedIndex = stepIndex >= 0 ? stepIndex : 0;
     }
 
     private async void OnBrowsePrivateKey(object? sender, RoutedEventArgs e)

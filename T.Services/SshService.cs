@@ -32,6 +32,7 @@ public sealed class SshService : ISshService
     private readonly ISettingsService _settingsService;
     private readonly IKnownHostsService _knownHostsService;
     private readonly ISessionStorageService _sessionStorageService;
+    private readonly IStepCertificateService _stepCertificateService;
 
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly Lock _stateLock = new();
@@ -89,6 +90,7 @@ public sealed class SshService : ISshService
         ISettingsService settingsService,
         IKnownHostsService knownHostsService,
         ISessionStorageService sessionStorageService,
+        IStepCertificateService stepCertificateService,
         uint columns = 120,
         uint rows = 30,
         uint pixelWidth = 960,
@@ -98,6 +100,7 @@ public sealed class SshService : ISshService
         _settingsService = settingsService;
         _knownHostsService = knownHostsService;
         _sessionStorageService = sessionStorageService;
+        _stepCertificateService = stepCertificateService;
         _credentials = SshCredentials.FromSession(session);
         _terminalColumns = columns;
         _terminalRows = rows;
@@ -186,7 +189,8 @@ public sealed class SshService : ISshService
             Username = string.IsNullOrWhiteSpace(entered.Username) ? stored.Username : entered.Username,
             Password = string.IsNullOrEmpty(entered.Password) ? stored.Password : entered.Password,
             PrivateKeyPath = string.IsNullOrWhiteSpace(entered.PrivateKeyPath) ? stored.PrivateKeyPath : entered.PrivateKeyPath,
-            PrivateKeyPassword = string.IsNullOrEmpty(entered.PrivateKeyPassword) ? stored.PrivateKeyPassword : entered.PrivateKeyPassword
+            PrivateKeyPassword = string.IsNullOrEmpty(entered.PrivateKeyPassword) ? stored.PrivateKeyPassword : entered.PrivateKeyPassword,
+            StepProfileId = stored.StepProfileId
         };
     }
 
@@ -224,7 +228,7 @@ public sealed class SshService : ISshService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException and not SshHostKeyException)
                 {
-                    var permanent = IsCredentialProblem(ex);
+                    var permanent = IsCredentialProblem(ex) || ex is StepCertificateException;
                     throw new SshJumpHostException($"Jump host '{hop.Name}' ({hop.Host}:{hop.Port}): {DescribeError(ex)}", permanent, ex);
                 }
 
@@ -305,6 +309,10 @@ public sealed class SshService : ISshService
         CancellationToken token,
         string? purpose = null) where T : BaseClient
     {
+        // SFTP (re)connects run in the background, e.g. hours later from the explorer: they
+        // use the certificate of the shell connect but never start a (browser) login.
+        using var stepCredential = await GetStepCredentialAsync(credentials, allowRenewal: interactive && purpose == null, token);
+
         for (int attempt = 0; ; attempt++)
         {
             token.ThrowIfCancellationRequested();
@@ -321,6 +329,7 @@ public sealed class SshService : ISshService
                 host, port, displayName, credentials,
                 interactive ? InteractiveAuthTimeout : ConnectTimeout,
                 _settingsService.Current.General.UseDefaultIdentityFiles,
+                stepCredential,
                 interactive ? request => AskAuthPrompt(request, rememberPassword: ReferenceEquals(credentials, _credentials)) : null,
                 promptCts.Token);
 
@@ -373,6 +382,22 @@ public sealed class SshService : ISshService
 
             await ConfirmHostKeyAsync(identity, rejected!, rejectedKey!, interactive, attempt);
         }
+    }
+
+    /// <summary>
+    /// The step-ca certificate of the session (or hop), if it uses one. Only a user initiated
+    /// connect may renew it: automatic reconnects must never open a browser login.
+    /// </summary>
+    private async Task<StepCredential?> GetStepCredentialAsync(SshCredentials credentials, bool allowRenewal, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(credentials.StepProfileId))
+            return null;
+
+        return await _stepCertificateService.GetCredentialAsync(
+            credentials.StepProfileId,
+            allowRenewal,
+            line => EnqueueOutput($"\x1b[2m{line}\x1b[0m\r\n"),
+            token);
     }
 
     private static void DisposeClient(BaseClient client, List<IDisposable> resources)
@@ -719,7 +744,7 @@ public sealed class SshService : ISshService
         ex is SshAuthenticationException or SshPrivateKeyException;
 
     private static bool IsPermanentFailure(Exception ex) =>
-        IsCredentialProblem(ex) || ex is SshHostKeyException || ex is SshJumpHostException { IsPermanent: true };
+        IsCredentialProblem(ex) || ex is SshHostKeyException or StepCertificateException || ex is SshJumpHostException { IsPermanent: true };
 
     /// <summary>Detaches and disposes the active connection. Returns true when there was one.</summary>
     private bool TeardownConnection()
@@ -789,6 +814,8 @@ public sealed class SshService : ISshService
     private static string DescribeError(Exception ex) => ex switch
     {
         SshAuthenticationException => $"Authentication failed: {ex.Message}",
+        // The message can contain values from settings.json or the CA and is written to the terminal.
+        StepCertificateException => $"step-ca: {StepCli.Sanitize(ex.Message)}",
         SshOperationTimeoutException => "The connection timed out.",
         SocketException socket => $"Network error: {socket.Message}",
         SshConnectionException { InnerException: SocketException socket } => $"Network error: {socket.Message}",

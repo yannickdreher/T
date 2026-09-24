@@ -44,6 +44,12 @@ public sealed class EncryptionService : IEncryptionService
             return string.Empty;
 
         var plainBytes = Encoding.UTF8.GetBytes(plainText);
+        try { return EncryptBytes(plainBytes); }
+        finally { CryptographicOperations.ZeroMemory(plainBytes); }
+    }
+
+    public string EncryptBytes(ReadOnlySpan<byte> plainBytes, ReadOnlySpan<byte> associatedData = default)
+    {
         var output = new byte[NonceSize + plainBytes.Length + TagSize];
         var nonce = output.AsSpan(0, NonceSize);
         var cipher = output.AsSpan(NonceSize, plainBytes.Length);
@@ -51,8 +57,7 @@ public sealed class EncryptionService : IEncryptionService
 
         RandomNumberGenerator.Fill(nonce);
         using var aes = new AesGcm(_masterKey, TagSize);
-        aes.Encrypt(nonce, plainBytes, cipher, tag);
-        CryptographicOperations.ZeroMemory(plainBytes);
+        aes.Encrypt(nonce, plainBytes, cipher, tag, associatedData);
 
         return Prefix + Convert.ToBase64String(output);
     }
@@ -65,11 +70,25 @@ public sealed class EncryptionService : IEncryptionService
         if (!encryptedText.StartsWith(Prefix, StringComparison.Ordinal))
             return DecryptLegacy(encryptedText);
 
+        // Never hand ciphertext to the SSH server as a password.
+        var plain = DecryptBytes(encryptedText);
+        if (plain == null)
+            return string.Empty;
+
+        try { return Encoding.UTF8.GetString(plain); }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+
+    public byte[]? DecryptBytes(string encryptedText, ReadOnlySpan<byte> associatedData = default)
+    {
+        if (string.IsNullOrEmpty(encryptedText) || !encryptedText.StartsWith(Prefix, StringComparison.Ordinal))
+            return null;
+
         try
         {
             var data = Convert.FromBase64String(encryptedText[Prefix.Length..]);
             if (data.Length < NonceSize + TagSize)
-                return string.Empty;
+                return null;
 
             var cipherLength = data.Length - NonceSize - TagSize;
             var plain = new byte[cipherLength];
@@ -78,14 +97,14 @@ public sealed class EncryptionService : IEncryptionService
                 data.AsSpan(0, NonceSize),
                 data.AsSpan(NonceSize, cipherLength),
                 data.AsSpan(NonceSize + cipherLength, TagSize),
-                plain);
-            return Encoding.UTF8.GetString(plain);
+                plain,
+                associatedData);
+            return plain;
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException)
         {
-            // Never hand ciphertext to the SSH server as a password.
             Debug.WriteLine($"[EncryptionService] Could not decrypt stored secret: {ex.Message}");
-            return string.Empty;
+            return null;
         }
     }
 

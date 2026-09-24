@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IKnownHostsService, KnownHostsService>();
         services.AddSingleton<ISessionStorageService, SqliteSessionStorageService>();
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IStepCertificateService, StepCertificateService>();
         services.AddSingleton<IUpdateService, UpdateService>();
         services.AddSingleton<ISshManager, SshManager>();
         services.AddSingleton<IWindowProvider, WindowProvider>();

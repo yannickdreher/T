@@ -48,6 +48,14 @@
                     <TextBlock Text="Terminal" />
                 </StackPanel>
             </ListBoxItem>
+            <ListBoxItem Padding="12,8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="{StaticResource key_regular}" />
+                    <TextBlock Text="step-ca" />
+                </StackPanel>
+            </ListBoxItem>
         </ListBox>
 
         <!--  Pages  -->
@@ -237,6 +245,111 @@
                                            Minimum="0"
                                            Value="{Binding Terminal.TerminalPadding}" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <!--  Page: step-ca  -->
+                    <StackPanel IsVisible="{Binding #SettingsNav.SelectedIndex, Converter={StaticResource EqualsConverter}, ConverterParameter=3}" Spacing="8">
+                        <TextBlock Classes="hint"
+                                   Text="Sessions can log in with a short-lived SSH certificate from a step-ca. T creates the key pair itself and lets the step CLI sign only the public key. The private key is stored encrypted and never leaves T."
+                                   TextWrapping="Wrap" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="step CLI" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                <TextBox Grid.Column="0"
+                                         PlaceholderText="Leave empty to search PATH"
+                                         Text="{Binding Step.ExecutablePath}" />
+                                <Button Grid.Column="1"
+                                        Click="OnBrowseStepExecutable"
+                                        Content="Browse..." />
+                            </Grid>
+                            <TextBlock Classes="hint"
+                                       Text="{Binding Step.ExecutableStatus}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Separator Margin="0,8" />
+
+                        <TextBlock FontWeight="SemiBold" Text="Certificate authorities" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <ListBox Grid.Column="0"
+                                     MinHeight="64"
+                                     MaxHeight="120"
+                                     ItemsSource="{Binding Step.Profiles}"
+                                     SelectedItem="{Binding Step.SelectedProfile}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StepProfileViewModel">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <Button HorizontalAlignment="Stretch"
+                                        Command="{Binding Step.AddProfileCommand}"
+                                        Content="Add" />
+                                <Button HorizontalAlignment="Stretch"
+                                        Command="{Binding Step.RemoveProfileCommand}"
+                                        Content="Remove" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ContentControl Content="{Binding Step.SelectedProfile}">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate x:DataType="vm:StepProfileViewModel">
+                                    <StackPanel Spacing="8">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="Name" />
+                                            <TextBox Text="{Binding Name}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="Identity" />
+                                            <TextBox PlaceholderText="e.g. you@example.com (the OIDC login)" Text="{Binding Identity}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="CA URL (optional)" />
+                                            <TextBox PlaceholderText="https://ca.example.com" Text="{Binding CaUrl}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="Root certificate (optional)" />
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                                <TextBox Grid.Column="0"
+                                                         PlaceholderText="root_ca.crt of the CA"
+                                                         Text="{Binding RootCertificatePath}" />
+                                                <Button Grid.Column="1"
+                                                        Click="OnBrowseRootCertificate"
+                                                        Content="Browse..." />
+                                            </Grid>
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <StackPanel Grid.Column="0" Spacing="4">
+                                                <TextBlock Text="Context (optional)" />
+                                                <TextBox Text="{Binding Context}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="Provisioner (optional)" />
+                                                <TextBox Text="{Binding Provisioner}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="Principals (optional)" />
+                                            <TextBox PlaceholderText="Comma separated, e.g. alice, admin" Text="{Binding Principals}" />
+                                        </StackPanel>
+                                        <TextBlock Classes="hint"
+                                                   Text="Empty fields use the configuration of the step CLI (step ca bootstrap). The CA must allow the login without questions on the command line: an OIDC provisioner (browser login) works, a password-protected JWK provisioner does not."
+                                                   TextWrapping="Wrap" />
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding CertificateStatus}"
+                                                       TextWrapping="Wrap" />
+                                            <Button Grid.Column="1"
+                                                    Command="{Binding DeleteCertificateCommand}"
+                                                    Content="Delete certificate" />
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
                     </StackPanel>
                 </Panel>
             </ScrollViewer>

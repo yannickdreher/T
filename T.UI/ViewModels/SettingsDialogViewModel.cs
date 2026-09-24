@@ -1,41 +1,52 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using T.Abstractions;
 using T.Models;
+using T.Services;
 
 namespace T.UI.ViewModels;
 
 public partial class SettingsDialogViewModel : ObservableValidator
 {
     private readonly ISettingsService? _settingsService;
+    private readonly IStepCertificateService? _stepCertificateService;
 
     public GeneralSettingsViewModel General { get; }
     public UpdateSettingsViewModel Update { get; }
     public ExplorerSettingsViewModel Explorer { get; }
     public TerminalSettingsViewModel Terminal { get; }
+    public StepSettingsViewModel Step { get; }
 
     public bool HasAnyErrors =>
-        General.HasErrors || Update.HasErrors || Explorer.HasErrors || Terminal.HasErrors;
+        General.HasErrors || Update.HasErrors || Explorer.HasErrors || Terminal.HasErrors || Step.HasAnyErrors;
 
     public SettingsDialogViewModel()
         : this(new AppSettings())
     {
     }
 
-    public SettingsDialogViewModel(AppSettings settings)
+    public SettingsDialogViewModel(AppSettings settings, IStepCertificateService? stepCertificateService = null)
     {
+        _stepCertificateService = stepCertificateService;
         General = new GeneralSettingsViewModel(settings.General);
         Update = new UpdateSettingsViewModel(settings.Update);
         Explorer = new ExplorerSettingsViewModel(settings.Explorer);
         Terminal = new TerminalSettingsViewModel(settings.Terminal);
+        Step = new StepSettingsViewModel(settings.Step, stepCertificateService);
 
         HookValidation();
     }
 
-    public SettingsDialogViewModel(ISettingsService settingsService)
-        : this(settingsService.Current)
+    public SettingsDialogViewModel(ISettingsService settingsService, IStepCertificateService stepCertificateService)
+        : this(settingsService.Current, stepCertificateService)
     {
         _settingsService = settingsService;
     }
@@ -52,6 +63,10 @@ public partial class SettingsDialogViewModel : ObservableValidator
         Update.ApplyTo(target.Update);
         Explorer.ApplyTo(target.Explorer);
         Terminal.ApplyTo(target.Terminal);
+
+        // The key pair of a removed CA profile must not stay on disk.
+        foreach (var removedId in Step.ApplyTo(target.Step))
+            _stepCertificateService?.Forget(removedId);
     }
 
     private void HookValidation()
@@ -60,6 +75,11 @@ public partial class SettingsDialogViewModel : ObservableValidator
         Update.ErrorsChanged += OnChildErrorsChanged;
         Explorer.ErrorsChanged += OnChildErrorsChanged;
         Terminal.ErrorsChanged += OnChildErrorsChanged;
+        Step.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(StepSettingsViewModel.HasAnyErrors))
+                OnPropertyChanged(nameof(HasAnyErrors));
+        };
         OnPropertyChanged(nameof(HasAnyErrors));
     }
 
@@ -268,6 +288,200 @@ public partial class TerminalSettingsViewModel : ObservableValidator
     partial void OnTerminalPaddingChanged(int value) => ValidateProperty(value, nameof(TerminalPadding));
 }
 
+public partial class StepSettingsViewModel : ObservableValidator
+{
+    private readonly IStepCertificateService? _certificates;
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepExecutablePath))]
+    [ObservableProperty] private string _executablePath = "";
+
+    [ObservableProperty] private string _executableStatus = "";
+
+    [NotifyCanExecuteChangedFor(nameof(RemoveProfileCommand))]
+    [ObservableProperty] private StepProfileViewModel? _selectedProfile;
+
+    public ObservableCollection<StepProfileViewModel> Profiles { get; } = [];
+
+    public bool HasAnyErrors => HasErrors || Profiles.Any(p => p.HasErrors);
+
+    public StepSettingsViewModel()
+        : this(new StepSettings(), null)
+    {
+    }
+
+    public StepSettingsViewModel(StepSettings settings, IStepCertificateService? certificates)
+    {
+        _certificates = certificates;
+        _executablePath = settings.ExecutablePath;
+        foreach (var profile in settings.Profiles)
+            AddProfileViewModel(new StepProfileViewModel(profile, certificates));
+        _selectedProfile = Profiles.FirstOrDefault();
+
+        ErrorsChanged += (_, _) => OnPropertyChanged(nameof(HasAnyErrors));
+        ValidateAllProperties();
+        UpdateExecutableStatus();
+    }
+
+    /// <summary>Writes the settings back and returns the ids of removed profiles.</summary>
+    public IReadOnlyList<string> ApplyTo(StepSettings target)
+    {
+        var removed = target.Profiles.Select(p => p.Id).Except(Profiles.Select(p => p.Id)).ToList();
+        target.ExecutablePath = ExecutablePath.Trim();
+        // Replaced instead of changed: connections read the list on background threads.
+        target.Profiles = [.. Profiles.Select(p => p.ToModel())];
+        return removed;
+    }
+
+    [RelayCommand]
+    private void AddProfile()
+    {
+        var profile = new StepProfileViewModel(new StepCaProfile { Name = "step-ca" }, _certificates);
+        AddProfileViewModel(profile);
+        SelectedProfile = profile;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveProfile))]
+    private void RemoveProfile()
+    {
+        if (SelectedProfile is not { } profile) return;
+
+        profile.ErrorsChanged -= OnProfileErrorsChanged;
+        Profiles.Remove(profile);
+        SelectedProfile = Profiles.FirstOrDefault();
+        OnPropertyChanged(nameof(HasAnyErrors));
+    }
+
+    private bool CanRemoveProfile() => SelectedProfile != null;
+
+    private void AddProfileViewModel(StepProfileViewModel profile)
+    {
+        profile.ErrorsChanged += OnProfileErrorsChanged;
+        Profiles.Add(profile);
+        OnPropertyChanged(nameof(HasAnyErrors));
+    }
+
+    private void OnProfileErrorsChanged(object? sender, DataErrorsChangedEventArgs e) =>
+        OnPropertyChanged(nameof(HasAnyErrors));
+
+    partial void OnExecutablePathChanged(string value)
+    {
+        ValidateProperty(value, nameof(ExecutablePath));
+        UpdateExecutableStatus();
+    }
+
+    private void UpdateExecutableStatus()
+    {
+        if (_certificates == null || HasErrors)
+        {
+            ExecutableStatus = "";
+            return;
+        }
+
+        ExecutableStatus = _certificates.FindExecutable(ExecutablePath) is { } found
+            ? $"Using {found}"
+            : "The step CLI was not found in PATH or the usual install folders, or other users could change it. Install it or enter its path.";
+    }
+}
+
+public partial class StepProfileViewModel : ObservableValidator
+{
+    private readonly IStepCertificateService? _certificates;
+
+    public string Id { get; }
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepName))]
+    [ObservableProperty] private string _name = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepIdentity))]
+    [ObservableProperty] private string _identity = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepCaUrl))]
+    [ObservableProperty] private string _caUrl = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepRootCertificate))]
+    [ObservableProperty] private string _rootCertificatePath = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepContext))]
+    [ObservableProperty] private string _context = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepProvisioner))]
+    [ObservableProperty] private string _provisioner = "";
+
+    [CustomValidation(typeof(SettingsValidators), nameof(SettingsValidators.ValidateStepPrincipals))]
+    [ObservableProperty] private string _principals = "";
+
+    [NotifyCanExecuteChangedFor(nameof(DeleteCertificateCommand))]
+    [ObservableProperty] private bool _hasCertificate;
+
+    [ObservableProperty] private string _certificateStatus = "";
+
+    public StepProfileViewModel()
+        : this(new StepCaProfile(), null)
+    {
+    }
+
+    public StepProfileViewModel(StepCaProfile profile, IStepCertificateService? certificates)
+    {
+        _certificates = certificates;
+        // A broken id (hand-edited settings) gets a new one; the old certificate is then unused.
+        Id = StepProfileValidation.TryParseId(profile.Id, out _) ? profile.Id : Guid.NewGuid().ToString();
+        _name = profile.Name;
+        _identity = profile.Identity;
+        _caUrl = profile.CaUrl;
+        _rootCertificatePath = profile.RootCertificatePath;
+        _context = profile.Context;
+        _provisioner = profile.Provisioner;
+        _principals = profile.Principals;
+        ValidateAllProperties();
+        UpdateCertificateStatus();
+    }
+
+    public StepCaProfile ToModel() => new()
+    {
+        Id = Id,
+        Name = Name.Trim(),
+        Identity = Identity.Trim(),
+        CaUrl = CaUrl.Trim(),
+        RootCertificatePath = RootCertificatePath.Trim(),
+        Context = Context.Trim(),
+        Provisioner = Provisioner.Trim(),
+        Principals = string.Join(", ", StepProfileValidation.SplitPrincipals(Principals))
+    };
+
+    /// <summary>Deletes the stored key pair right away (a new certificate is requested on the next connect).</summary>
+    [RelayCommand(CanExecute = nameof(HasCertificate))]
+    private void DeleteCertificate()
+    {
+        _certificates?.Forget(Id);
+        UpdateCertificateStatus();
+    }
+
+    partial void OnNameChanged(string value) => ValidateProperty(value, nameof(Name));
+
+    // The stored certificate belongs to these values; changing them shows it as no longer usable.
+    partial void OnIdentityChanged(string value) => OnCertificateSettingChanged(value, nameof(Identity));
+    partial void OnCaUrlChanged(string value) => OnCertificateSettingChanged(value, nameof(CaUrl));
+    partial void OnRootCertificatePathChanged(string value) => OnCertificateSettingChanged(value, nameof(RootCertificatePath));
+    partial void OnContextChanged(string value) => OnCertificateSettingChanged(value, nameof(Context));
+    partial void OnProvisionerChanged(string value) => OnCertificateSettingChanged(value, nameof(Provisioner));
+    partial void OnPrincipalsChanged(string value) => OnCertificateSettingChanged(value, nameof(Principals));
+
+    private void OnCertificateSettingChanged(string value, string propertyName)
+    {
+        ValidateProperty(value, propertyName);
+        UpdateCertificateStatus();
+    }
+
+    private void UpdateCertificateStatus()
+    {
+        var validUntil = _certificates?.GetValidUntil(ToModel());
+        HasCertificate = validUntil != null;
+        CertificateStatus = validUntil is { } until
+            ? $"Certificate valid until {until.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}"
+            : "No valid certificate. It is requested when a session using this profile connects.";
+    }
+}
+
 public static class SettingsValidators
 {
     public static ValidationResult? ValidateDownloadPath(string? value, ValidationContext context)
@@ -279,4 +493,31 @@ public static class SettingsValidators
             ? ValidationResult.Success
             : new ValidationResult("Default download path must be empty or an absolute path.");
     }
+
+    public static ValidationResult? ValidateStepExecutablePath(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateExecutablePath(value));
+
+    public static ValidationResult? ValidateStepName(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateName(value));
+
+    public static ValidationResult? ValidateStepIdentity(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateIdentity(value));
+
+    public static ValidationResult? ValidateStepCaUrl(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateCaUrl(value));
+
+    public static ValidationResult? ValidateStepRootCertificate(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateRootCertificatePath(value));
+
+    public static ValidationResult? ValidateStepContext(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateContext(value));
+
+    public static ValidationResult? ValidateStepProvisioner(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidateProvisioner(value));
+
+    public static ValidationResult? ValidateStepPrincipals(string? value, ValidationContext context) =>
+        ToResult(StepProfileValidation.ValidatePrincipals(value));
+
+    private static ValidationResult? ToResult(string? error) =>
+        error == null ? ValidationResult.Success : new ValidationResult(error);
 }

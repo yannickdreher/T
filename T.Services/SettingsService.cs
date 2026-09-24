@@ -73,7 +73,26 @@ public sealed class SettingsService : ISettingsService, IDisposable
         t.TerminalFontSize = Math.Clamp(t.TerminalFontSize, 6, 72);
         t.ScrollbackLines = Math.Clamp(t.ScrollbackLines, 1000, 100_000);
         t.TerminalPadding = Math.Clamp(t.TerminalPadding, 0, 32);
+
+        // Profiles are validated again before step runs; here only nulls are removed.
+        var step = settings.Step ??= new StepSettings();
+        step.ExecutablePath ??= "";
+        step.Profiles = [.. (step.Profiles ?? []).OfType<StepCaProfile>().Select(SanitizeProfile)
+            .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)];
         return settings;
+    }
+
+    private static StepCaProfile SanitizeProfile(StepCaProfile profile)
+    {
+        profile.Id ??= "";
+        profile.Name ??= "";
+        profile.Identity ??= "";
+        profile.CaUrl ??= "";
+        profile.RootCertificatePath ??= "";
+        profile.Context ??= "";
+        profile.Provisioner ??= "";
+        profile.Principals ??= "";
+        return profile;
     }
 
     public void Save()

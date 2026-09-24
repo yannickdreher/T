@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using T.Models;
@@ -7,7 +8,8 @@ namespace T.Services;
 
 /// <summary>
 /// Builds <see cref="ConnectionInfo"/> instances: authentication methods, private key
-/// loading (explicit key, OpenSSH certificates, default identity files) and algorithm hardening.
+/// loading (step-ca certificate, explicit key, OpenSSH certificates, default identity files)
+/// and algorithm hardening.
 /// </summary>
 internal static class SshAuthentication
 {
@@ -32,6 +34,7 @@ internal static class SshAuthentication
         SshCredentials credentials,
         TimeSpan timeout,
         bool useDefaultIdentityFiles,
+        StepCredential? stepCredential,
         PromptHandler? promptHandler,
         CancellationToken promptToken = default)
     {
@@ -44,8 +47,17 @@ internal static class SshAuthentication
         {
             var methods = new List<AuthenticationMethod>();
 
-            var keys = LoadPrivateKeys(credentials, useDefaultIdentityFiles);
-            resources.AddRange(keys);
+            // The step-ca certificate is offered first: the session was configured for it.
+            var keys = new List<PrivateKeyFile>();
+            if (stepCredential != null)
+            {
+                keys.Add(LoadStepKey(stepCredential));
+                resources.AddRange(keys);
+            }
+
+            var fileKeys = LoadPrivateKeys(credentials, useDefaultIdentityFiles);
+            resources.AddRange(fileKeys);
+            keys.AddRange(fileKeys);
             if (keys.Count > 0)
                 methods.Add(new PrivateKeyAuthenticationMethod(username, [.. keys]));
 
@@ -106,6 +118,21 @@ internal static class SshAuthentication
     }
 
     // ── Private keys ─────────────────────────────────────────────────────
+
+    /// <summary>Loads the in-memory step-ca key with its certificate (never written to a file).</summary>
+    private static PrivateKeyFile LoadStepKey(StepCredential credential)
+    {
+        try
+        {
+            using var key = new MemoryStream(credential.PrivateKeyPem, writable: false);
+            using var certificate = new MemoryStream(Encoding.ASCII.GetBytes(credential.Certificate), writable: false);
+            return new PrivateKeyFile(key, null, certificate);
+        }
+        catch (Exception ex) when (IsKeyLoadError(ex))
+        {
+            throw new StepCertificateException($"The step-ca certificate could not be loaded: {ex.Message}", ex);
+        }
+    }
 
     private static List<PrivateKeyFile> LoadPrivateKeys(SshCredentials credentials, bool useDefaultIdentityFiles)
     {
