@@ -144,20 +144,35 @@ public sealed class StepCertificateTests : IDisposable
     [Fact]
     public void FindExecutable_IgnoresRelativePathEntries()
     {
-        var binDirectory = _dir.File("bin");
-        Directory.CreateDirectory(binDirectory);
-        var executable = Path.Combine(binDirectory, OperatingSystem.IsWindows() ? "step.exe" : "step");
+        var executable = CreateFakeStep(_dir.File("bin"));
+        Assert.Equal(executable, StepCli.FindExecutable(null, Path.GetDirectoryName(executable)));
+        Assert.Equal(executable, StepCli.FindExecutable(executable, null));
+
+        // A step below the current directory, reachable only through relative entries: never used.
+        // (Created there on purpose: across drives a "relative" path to the temp folder is absolute.)
+        var name = "T.Tests-relative-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var relativeExecutable = Path.GetRelativePath(Environment.CurrentDirectory, CreateFakeStep(Path.GetFullPath(name)));
+            Assert.False(Path.IsPathRooted(relativeExecutable));
+
+            Assert.Null(StepCli.FindExecutable(null, string.Join(Path.PathSeparator, ".", name, Path.Combine(".", name))));
+            Assert.Null(StepCli.FindExecutable(relativeExecutable, null));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetFullPath(name), recursive: true);
+        }
+    }
+
+    private static string CreateFakeStep(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var executable = Path.Combine(directory, OperatingSystem.IsWindows() ? "step.exe" : "step");
         File.WriteAllText(executable, "");
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-
-        // The same directory, but relative to the current directory: must never be used.
-        var relative = Path.GetRelativePath(Environment.CurrentDirectory, binDirectory);
-        Assert.Null(StepCli.FindExecutable(null, string.Join(Path.PathSeparator, ".", relative)));
-
-        Assert.Equal(executable, StepCli.FindExecutable(null, string.Join(Path.PathSeparator, relative, binDirectory)));
-        Assert.Equal(executable, StepCli.FindExecutable(executable, null));
-        Assert.Null(StepCli.FindExecutable(relative, null));
+        return executable;
     }
 
     [Fact]
