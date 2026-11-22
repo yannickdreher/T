@@ -66,8 +66,10 @@
                        TextTrimming="CharacterEllipsis"
                        ToolTip.Tip="{Binding StatusMessage}" />
 
-            <!--  Transfer progress  -->
-            <Border Grid.Column="2" Padding="8,0">
+            <!--  Transfer progress (clipped: in a narrow window it must not run into the next cell)  -->
+            <Border Grid.Column="2"
+                    Padding="8,0"
+                    ClipToBounds="True">
                 <StackPanel HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             IsVisible="{Binding IsTransferring, FallbackValue=False}"
@@ -111,13 +113,14 @@
                 </StackPanel>
             </Border>
 
-            <!--  Diagnostics toggle  -->
+            <!--  Diagnostics toggle: as wide as the view rail above it (SessionView), so the lines meet  -->
             <Border Grid.Column="3"
-                    Padding="4,0"
+                    Width="43"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1,0,0,0">
                 <Button Height="22"
                         MinWidth="26"
+                        HorizontalAlignment="Center"
                         Classes="tool"
                         Command="{Binding ToggleTerminalStatsOverlayCommand}"
                         ToolTip.Tip="Terminal diagnostics">

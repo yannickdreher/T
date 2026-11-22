@@ -3,8 +3,10 @@
         xmlns:ui="using:FluentAvalonia.UI.Controls">
 
     <!--  ── Layout ──  -->
+    <!--  4px like the gap between the activity bar and the list (the theme's minimum would make it wider)  -->
     <Style Selector="GridSplitter[ResizeDirection=Columns]">
         <Setter Property="Width" Value="4" />
+        <Setter Property="MinWidth" Value="4" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="Transparent" />

@@ -31,10 +31,24 @@ public partial class MainWindowViewModel(
     public SessionsTreeViewModel SessionsTree => _sessionsTree;
     public TunnelsWorkspaceViewModel TunnelsWorkspace { get; } = tunnelsWorkspace;
 
-    [ObservableProperty] private bool _showTunnels;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTerminalList))]
+    private bool _showTunnels;
 
+    /// <summary>The list of terminal profiles is collapsed (more room for the terminal).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTerminalList))]
+    private bool _isTerminalListCollapsed;
+
+    public bool ShowTerminalList => !ShowTunnels && !IsTerminalListCollapsed;
+
+    /// <summary>Shows the terminals; when they are shown already, collapses or expands the profile list.</summary>
     [RelayCommand]
-    private void ShowTerminals() => ShowTunnels = false;
+    private void ShowTerminals()
+    {
+        if (ShowTunnels) ShowTunnels = false;
+        else IsTerminalListCollapsed = !IsTerminalListCollapsed;
+    }
 
     [RelayCommand]
     private void OpenTunnels()

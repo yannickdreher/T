@@ -45,8 +45,13 @@
             </Menu>
         </StackPanel>
 
-        <Grid Grid.Row="1" ColumnDefinitions="42,300,Auto,*">
-            <!--  Activity bar: switches the sidebar between terminal profiles and tunnels  -->
+        <Grid x:Name="Workspace"
+              Grid.Row="1"
+              ColumnDefinitions="42,300,Auto,*">
+            <!--
+                Activity bar: switches between terminals and tunnels. Clicking the active "Terminals"
+                again collapses the profile list (see MainWindow.axaml.cs for the column width).
+            -->
             <Border Grid.Column="0"
                     Margin="0,0,4,0"
                     Classes="Panel">
@@ -55,7 +60,7 @@
                             Classes="activity"
                             Classes.active="{Binding !ShowTunnels}"
                             Command="{Binding ShowTerminalsCommand}"
-                            ToolTip.Tip="Terminals">
+                            ToolTip.Tip="Terminals (click again to hide the list)">
                         <Panel>
                             <Border Classes="activityIndicator" />
                             <PathIcon Data="{StaticResource window_console_regular}" />
@@ -80,12 +85,12 @@
                 </StackPanel>
             </Border>
 
-            <Panel Grid.Column="1" IsVisible="{Binding !ShowTunnels}">
+            <Panel Grid.Column="1" IsVisible="{Binding ShowTerminalList}">
                 <components:TerminalsPanel DataContext="{Binding SessionsTree}" />
             </Panel>
 
             <GridSplitter Grid.Column="2"
-                          IsVisible="{Binding !ShowTunnels}"
+                          IsVisible="{Binding ShowTerminalList}"
                           ResizeBehavior="PreviousAndNext"
                           ResizeDirection="Columns" />
 
@@ -107,37 +112,6 @@
                               SelectedItem="{Binding SessionsTree.ActiveSession}"
                               TabItemsSource="{Binding SessionsTree.OpenSessions}"
                               TabWidthMode="Equal">
-                    <ui:FATabView.TabStripFooter>
-                        <!--
-                            Workspace of the active SSH session. No vertical margin: a footer taller than
-                            the tabs (33px) makes the strip taller and leaves a gap below the selected tab.
-                        -->
-                        <ListBox Margin="12,0,2,0"
-                                 HorizontalAlignment="Right"
-                                 VerticalAlignment="Center"
-                                 Classes="segmented"
-                                 SelectedIndex="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Mode=TwoWay, FallbackValue=0}"
-                                 Theme="{StaticResource SegmentedTheme}">
-                            <ListBoxItem ToolTip.Tip="Terminal">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <PathIcon Classes="small" Data="{StaticResource window_console_regular}" />
-                                    <TextBlock VerticalAlignment="Center" Text="Terminal" />
-                                </StackPanel>
-                            </ListBoxItem>
-                            <ListBoxItem ToolTip.Tip="SFTP file explorer">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <PathIcon Classes="small" Data="{StaticResource folder_open_regular}" />
-                                    <TextBlock VerticalAlignment="Center" Text="Files" />
-                                </StackPanel>
-                            </ListBoxItem>
-                            <ListBoxItem ToolTip.Tip="Remote system monitor">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <PathIcon Classes="small" Data="{StaticResource pulse_regular}" />
-                                    <TextBlock VerticalAlignment="Center" Text="Monitor" />
-                                </StackPanel>
-                            </ListBoxItem>
-                        </ListBox>
-                    </ui:FATabView.TabStripFooter>
                     <ui:FATabView.TabItemTemplate>
                         <DataTemplate x:DataType="vm:SessionViewModel">
                             <ui:FATabViewItem Content="{Binding}" ToolTip.Tip="{Binding Session.Address}">

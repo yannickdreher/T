@@ -366,8 +366,10 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
                 bool showSample = _activeDashboard && (!IsPaused || manual);
                 var host = await ReadAsync(service, LinuxSystemMetrics.HostCommand, 256 * 1024, token);
                 if (token.IsCancellationRequested) return;
+                // The history is recorded while the session's tab is shown, whichever of its views is
+                // open, so the charts are filled when the user switches to the monitor. Pause freezes it.
                 if (_activeTab)
-                    PublishHost(host, showSample && dashboard == _dashboardCts && _activeDashboard);
+                    PublishHost(host, !IsPaused || (showSample && dashboard == _dashboardCts && _activeDashboard));
 
                 if (showSample && dashboard is not null && dashboard == _dashboardCts && IsAvailable)
                     await SampleProcessesAsync(service, dashboard.Token);
@@ -380,6 +382,7 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         catch (OperationCanceledException) { }
     }
 
+    /// <param name="updateDashboard">Also record the sample in the history, status and "updated" time of the dashboard.</param>
     private void PublishHost(SshCommandResult result, bool updateDashboard)
     {
         var now = DateTimeOffset.UtcNow;

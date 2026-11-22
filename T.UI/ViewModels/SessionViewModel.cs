@@ -81,6 +81,10 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     partial void OnSelectedSessionTabChanged(int value) => UpdateSystemMonitorVisibility();
 
+    /// <summary>Switches the view of this session: 0 = terminal, 1 = files, 2 = monitor.</summary>
+    [RelayCommand]
+    private void SelectSessionTab(string tab) => SelectedSessionTab = int.Parse(tab, System.Globalization.CultureInfo.InvariantCulture);
+
     private void UpdateSystemMonitorVisibility() => SystemMonitor.SetVisibility(IsActive, IsActive && SelectedSessionTab == 2);
 
     /// <summary>Address bar segments of <see cref="CurrentPath"/> (server root first).</summary>

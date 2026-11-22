@@ -9,15 +9,19 @@
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="FolderIconBrush" Color="#E8B339" />
             <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#B3000000" />
-            <!--  Session tabs: the strip lies on the window background, the selected tab merges into the session surface  -->
-            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#12FFFFFF" />
-            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#12FFFFFF" />
+            <!--
+                Session tabs: the strip lies on the window background, the selected tab merges into the session
+                surface. One opaque frame colour for tab, strip line and surface: a translucent one looks
+                different on the black terminal tab than on the grey surface next to it.
+            -->
+            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#373737" />
+            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#373737" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="FolderIconBrush" Color="#C8921A" />
             <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#B3F3F3F3" />
-            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#0F000000" />
-            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="TabViewBorderBrush" Color="#E5E5E5" />
+            <SolidColorBrush x:Key="TabViewSelectedItemBorderBrush" Color="#E5E5E5" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

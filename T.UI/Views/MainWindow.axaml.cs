@@ -41,11 +41,34 @@ public partial class MainWindow : FAAppWindow
     {
         DataContext = viewModel;
         _settingsService = settingsService;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainWindowViewModel.IsTerminalListCollapsed))
+                ApplyTerminalListWidth(viewModel.IsTerminalListCollapsed);
+        };
         Closing += OnClosing;
         Opened += async (_, _) => await viewModel.SessionsTree.RestoreLastSessionsAsync();
     }
 
     private SessionsTreeViewModel? Sessions => (DataContext as MainWindowViewModel)?.SessionsTree;
+
+    // Width of the profile list before it was collapsed (the splitter may have changed it).
+    private GridLength _terminalListWidth = new(300);
+
+    /// <summary>The list sits in a fixed-width column; hiding its content alone would leave the gap.</summary>
+    private void ApplyTerminalListWidth(bool collapsed)
+    {
+        var column = Workspace.ColumnDefinitions[1];
+        if (collapsed)
+        {
+            _terminalListWidth = column.Width;
+            column.Width = new GridLength(0);
+        }
+        else
+        {
+            column.Width = _terminalListWidth;
+        }
+    }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {

@@ -55,6 +55,8 @@ public partial class App : Application
 
             services.GetRequiredService<IWindowProvider>().MainWindow = mainWindow;
 
+            mainWindow.Opened += (_, _) => ShellIconCache.RefreshAfterUpdate();
+
             if (_settingsService.Current.Update.CheckForUpdatesOnStartup)
                 mainWindow.Opened += async (_, _) => await CheckForUpdatesAsync(mainWindow);
 

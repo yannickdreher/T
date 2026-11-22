@@ -1,6 +1,7 @@
 ﻿<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="using:FluentAvalonia.UI.Controls">
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
+        xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives">
     <!--
         Session tabs (FATabView in the main window), close to the Windows 11 / Windows Terminal look.
     -->
@@ -12,6 +13,47 @@
         <SolidColorBrush x:Key="TerminalBackgroundBrush" Color="#000000" />
         <SolidColorBrush x:Key="TerminalForegroundBrush" Color="#CCCCCC" />
     </Styles.Resources>
+
+    <!--  The line under the tab strip ends where the rounded top right corner of the session surface begins  -->
+    <Style Selector="ui|FATabView /template/ Border#RightBottomBorderLine">
+        <Setter Property="Margin" Value="0,0,3,0" />
+    </Style>
+
+    <!--  Same radius as the panes (sidebar, session surface) instead of the larger flyout radius  -->
+    <Style Selector="ui|FATabViewItem">
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    </Style>
+
+    <!--
+        The first tab starts at the left edge of the session surface, so its left border runs straight
+        into the border of the surface (FluentAvalonia insets the tabs by 2px). The outward curve at
+        its bottom left would stick out of the surface.
+    -->
+    <Style Selector="ui|FATabView /template/ uip|FATabViewListView#TabListView">
+        <Setter Property="Margin" Value="-2,0,0,0" />
+    </Style>
+    <!--
+        Selected tabs reach 1px to the left over their neighbour; the first one would leave the tab strip
+        and lose its border. It also reaches down to the surface, so its left line has no gap.
+    -->
+    <Style Selector="ui|FATabViewItem:nth-child(1):selected /template/ Border#TabContainerBorder">
+        <Setter Property="Margin" Value="0,0,-1,0" />
+    </Style>
+    <Style Selector="uip|FATabViewListView /template/ Grid#LeftLineHost">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="uip|FATabViewListView /template/ ScrollViewer#ScrollViewer /template/ Border#Column0MinWidthSpacer">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ui|FATabView /template/ Border#LeftBottomBorderLine">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ui|FATabViewItem:nth-child(1) /template/ Path#LeftRadiusRenderArc">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ui|FATabViewItem:nth-child(1) /template/ Path#SelectedBackgroundPath">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
 
     <!--
         The selected tab's surface ends 1px above the tab strip's bottom line; FluentAvalonia hides that
