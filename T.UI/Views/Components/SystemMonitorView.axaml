@@ -52,8 +52,13 @@
                     <TextBlock Text="{Binding HostVersion, StringFormat='Version: {0}'}" TextWrapping="Wrap" />
                 </StackPanel>
             </ToolTip.Tip>
-            <PathIcon Width="12" Height="12" Data="{StaticResource window_console_regular}" />
-            <TextBlock MaxWidth="160" Classes="metricValue" Text="{Binding Hostname}" TextTrimming="CharacterEllipsis" />
+            <PathIcon Width="12"
+                      Height="12"
+                      Data="{StaticResource window_console_regular}" />
+            <TextBlock MaxWidth="160"
+                       Classes="metricValue"
+                       Text="{Binding Hostname}"
+                       TextTrimming="CharacterEllipsis" />
         </StackPanel>
 
         <!--  CPU  -->

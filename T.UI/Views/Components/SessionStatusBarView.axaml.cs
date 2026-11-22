@@ -1,7 +1,7 @@
-using Avalonia.Controls;
-using Avalonia.Interactivity;
 using System;
 using System.Linq;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace T.UI.Views.Components;
 
