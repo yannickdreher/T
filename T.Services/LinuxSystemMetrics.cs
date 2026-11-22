@@ -202,7 +202,7 @@ public static class LinuxSystemMetrics
         return hasSample ? (received, sent) : null;
     }
 
-    private static RemoteProcess? ParseStat(string text, string user, long pageSize)
+    internal static RemoteProcess? ParseStat(string text, string user, long pageSize)
     {
         int open = text.IndexOf('(');
         int close = text.LastIndexOf(')');

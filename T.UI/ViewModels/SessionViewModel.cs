@@ -182,6 +182,9 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
         _settingsService.SettingsChanged += OnSettingsChanged;
         _session.PropertyChanged += OnSessionPropertyChanged;
+        SystemMonitor.ConfirmEndProcess = (title, message) => Host is { } host
+            ? DialogService.ConfirmAsync(host, title, message, "End process")
+            : Task.FromResult(false);
     }
 
     private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
