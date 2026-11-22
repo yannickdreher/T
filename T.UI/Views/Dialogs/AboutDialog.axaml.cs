@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Reflection;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -22,7 +23,10 @@ public partial class AboutDialog : UserControl
     {
         var assembly = Assembly.GetExecutingAssembly();
         var version = assembly.GetName().Version;
-        return version != null ? $"Version {version.Major}.{version.Minor}.{version.Build}" : "Version Unknown";
+        var display = version != null ? $"Version {version.Major}.{version.Minor}.{version.Build}" : "Version Unknown";
+        var branch = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "BuildBranch")?.Value;
+        return string.IsNullOrWhiteSpace(branch) ? display : $"{display} · {branch}";
     }
 
     private void OnViewLicenseClick(object? sender, RoutedEventArgs e)
