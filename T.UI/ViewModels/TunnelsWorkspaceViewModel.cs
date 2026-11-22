@@ -20,26 +20,26 @@ using T.UI.Views.Dialogs;
 namespace T.UI.ViewModels;
 
 /// <summary>
-/// The tunnels pane: saved local port forwardings. Each tunnel connects through a terminal profile
+/// The tunnels pane: saved port forwardings (local, remote and dynamic). Each tunnel connects through a terminal profile
 /// (credentials, keys, step-ca and jump hosts come from there) with its own SSH connection,
 /// independent of terminal tabs. Tunnels connect and disconnect individually.
 /// </summary>
 public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposable
 {
     private readonly SessionsTreeViewModel? _terminals;
-    private readonly ILocalTunnelStore? _store;
+    private readonly ITunnelStore? _store;
     private readonly IServiceProvider? _services;
     private readonly Dictionary<string, SessionViewModel> _connections = [];
     private readonly DispatcherTimer _sampler = new() { Interval = TimeSpan.FromSeconds(1) };
     private long _lastSample;
     private bool _opened;
 
-    [ObservableProperty] private LocalTunnelRow? _selected;
+    [ObservableProperty] private TunnelRow? _selected;
 
     /// <summary>Loading the saved tunnels failed (shown in the pane).</summary>
     [ObservableProperty] private string? _loadError;
 
-    public ObservableCollection<LocalTunnelRow> Tunnels { get; } = [];
+    public ObservableCollection<TunnelRow> Tunnels { get; } = [];
     public bool HasTunnels => Tunnels.Count > 0;
 
     /// <summary>Number of tunnels with a bound listener (badge on the activity bar).</summary>
@@ -57,13 +57,14 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     public TunnelsWorkspaceViewModel()
     {
         var host = new SshSession { Name = "bastion", Host = "bastion.example.com", Username = "admin" };
-        LocalTunnelRow Row(string name, int local, string target, int port, LocalTunnelStatus status) =>
-            new(new LocalTunnelRule(name, host.Id, name, local, target, port, false), host) { Status = status };
+        TunnelRow Row(string name, TunnelKind kind, int listen, string target, int port, TunnelStatus status) =>
+            new(new TunnelRule(name, host.Id, name, kind, listen, target, port, false), host) { Status = status };
 
-        Tunnels.Add(Row("PostgreSQL", 5432, "db.internal", 5432, new(LocalTunnelState.Active)));
-        Tunnels.Add(Row("Grafana", 3000, "localhost", 3000, new(LocalTunnelState.Starting)));
-        Tunnels.Add(Row("Redis", 6379, "cache.internal", 6379, new(LocalTunnelState.Failed, "Local port 6379 is already in use.")));
-        Tunnels.Add(Row("Admin UI", 8443, "10.0.0.12", 443, default));
+        Tunnels.Add(Row("PostgreSQL", TunnelKind.Local, 5432, "db.internal", 5432, new(TunnelState.Active)));
+        Tunnels.Add(Row("Grafana", TunnelKind.Local, 3000, "localhost", 3000, new(TunnelState.Starting)));
+        Tunnels.Add(Row("Redis", TunnelKind.Local, 6379, "cache.internal", 6379, new(TunnelState.Failed, "Local port 127.0.0.1:6379 is already in use.")));
+        Tunnels.Add(Row("Dev server", TunnelKind.Remote, 8080, "localhost", 5173, default));
+        Tunnels.Add(Row("SOCKS 1080", TunnelKind.Dynamic, 1080, "", 0, default));
 
         // Five minutes of traffic for the active one.
         var now = DateTimeOffset.Now;
@@ -76,7 +77,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
             double up = 60_000 + 40_000 * Math.Cos(i / 11.0);
             received += (long)(down * 2);
             sent += (long)(up * 2);
-            active.ApplySample(new LocalTunnelStatistics(received, sent, 3, 42), now.AddSeconds(i - 300), 2);
+            active.ApplySample(new TunnelStatistics(received, sent, 3, 42), now.AddSeconds(i - 300), 2);
         }
         Selected = active;
     }
@@ -84,7 +85,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     public TunnelsWorkspaceViewModel(SessionsTreeViewModel terminals, ISessionStorageService store, IServiceProvider services)
     {
         _terminals = terminals;
-        _store = store as ILocalTunnelStore;
+        _store = store as ITunnelStore;
         _services = services;
         Tunnels.CollectionChanged += (_, _) =>
         {
@@ -129,7 +130,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         _ = LoadAsync(null);
     }
 
-    partial void OnSelectedChanged(LocalTunnelRow? value)
+    partial void OnSelectedChanged(TunnelRow? value)
     {
         OnPropertyChanged(nameof(HasSelection));
         NotifyCommands();
@@ -158,8 +159,8 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         foreach (var row in Tunnels)
         {
             if (row.IsActive && _connections.TryGetValue(row.Rule.Id, out var vm) &&
-                vm.CreateTunnelTransport() is ILocalTunnelConnection forwarding)
-                row.ApplySample(forwarding.GetLocalTunnelStatistics(row.Rule.Id), now, seconds);
+                vm.CreateTunnelTransport() is ITunnelConnection forwarding)
+                row.ApplySample(forwarding.GetTunnelStatistics(row.Rule.Id), now, seconds);
         }
     }
 
@@ -176,7 +177,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         }
     }
 
-    private void SetStatus(LocalTunnelRow row, LocalTunnelStatus status)
+    private void SetStatus(TunnelRow row, TunnelStatus status)
     {
         row.Status = status;
         NotifyCommands();
@@ -185,7 +186,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     // ── Editing ──────────────────────────────────────────────────────────
 
     // A running tunnel has to be disconnected before it can be changed or deleted.
-    private bool CanChange(LocalTunnelRow? row) => _store != null && (row ?? Selected) is { IsRunning: false };
+    private bool CanChange(TunnelRow? row) => _store != null && (row ?? Selected) is { IsRunning: false };
 
     [RelayCommand]
     private async Task AddAsync()
@@ -199,7 +200,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
-    private async Task EditAsync(LocalTunnelRow? row)
+    private async Task EditAsync(TunnelRow? row)
     {
         if ((row ?? Selected) is not { } target || !CanChange(target)) return;
         var editor = new TunnelEditorViewModel(_terminals?.Sessions ?? [], target.Rule, null);
@@ -228,13 +229,13 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         return await dialog.ShowAsync(owner) == FAContentDialogResult.Primary;
     }
 
-    private async Task SaveAsync(TunnelEditorViewModel editor, LocalTunnelRule? existing)
+    private async Task SaveAsync(TunnelEditorViewModel editor, TunnelRule? existing)
     {
         if (_store is null || editor.Profile is not { } profile) return;
         try
         {
             var rule = editor.CreateRule(existing?.Id ?? Guid.NewGuid().ToString(), profile.Id);
-            await _store.SaveLocalTunnelAsync(rule, creating: existing is null);
+            await _store.SaveTunnelAsync(rule, creating: existing is null);
             await LoadAsync(rule.Id);
         }
         catch (Exception ex)
@@ -244,7 +245,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
-    private async Task DeleteAsync(LocalTunnelRow? row)
+    private async Task DeleteAsync(TunnelRow? row)
     {
         if ((row ?? Selected) is not { } target || !CanChange(target) || _store is null || Host is not { } owner) return;
         if (!await DialogService.ConfirmAsync(owner, "Delete tunnel",
@@ -253,7 +254,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
 
         try
         {
-            await _store.DeleteLocalTunnelAsync(target.Rule);
+            await _store.DeleteTunnelAsync(target.Rule);
             await LoadAsync(null);
         }
         catch (Exception ex)
@@ -265,27 +266,28 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     // ── Connecting ───────────────────────────────────────────────────────
 
     // Starting or stopping: the click must not start a second listener for the same rule.
-    private bool CanToggle(LocalTunnelRow? row) => _services != null && (row ?? Selected) is { IsBusy: false };
+    private bool CanToggle(TunnelRow? row) => _services != null && (row ?? Selected) is { IsBusy: false };
 
     [RelayCommand(CanExecute = nameof(CanToggle))]
-    private async Task ToggleAsync(LocalTunnelRow? row)
+    private async Task ToggleAsync(TunnelRow? row)
     {
         if ((row ?? Selected) is not { IsBusy: false } target) return;
         if (target.IsRunning) await DisconnectAsync(target);
         else await ConnectAsync(target);
     }
 
-    private async Task ConnectAsync(LocalTunnelRow row)
+    private async Task ConnectAsync(TunnelRow row)
     {
         if (_services is null || _connections.ContainsKey(row.Rule.Id)) return;
+        if (row.IsRemote && !await ConfirmRemoteBindAsync(row)) return;
 
         var vm = ActivatorUtilities.CreateInstance<SessionViewModel>(_services, row.Profile);
         var transport = vm.CreateTunnelTransport();
-        var forwarding = (ILocalTunnelConnection)transport;
+        var forwarding = (ITunnelConnection)transport;
         _connections.Add(row.Rule.Id, vm);
         row.BeginTraffic(DateTimeOffset.Now);
         UpdateSampler();
-        SetStatus(row, new(LocalTunnelState.Starting));
+        SetStatus(row, new(TunnelState.Starting));
 
         bool IsCurrent() => _connections.TryGetValue(row.Rule.Id, out var current) && current == vm;
 
@@ -293,21 +295,21 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         {
             if (state != ConnectionStatus.Disconnected || !IsCurrent()) return;
             Release(row);
-            SetStatus(row, error == null ? default : new(LocalTunnelState.Failed, error));
+            SetStatus(row, error == null ? default : new(TunnelState.Failed, error));
         });
-        forwarding.LocalTunnelsChanged += () => Dispatcher.UIThread.Post(() =>
+        forwarding.TunnelsChanged += () => Dispatcher.UIThread.Post(() =>
         {
             if (!IsCurrent()) return;
-            var status = forwarding.GetLocalTunnelStatus(row.Rule.Id);
-            if (status.State != LocalTunnelState.Inactive) SetStatus(row, status);
+            var status = forwarding.GetTunnelStatus(row.Rule.Id);
+            if (status.State != TunnelState.Inactive) SetStatus(row, status);
         });
 
         try
         {
             await transport.ConnectAsync();
-            await forwarding.StartLocalTunnelAsync(row.Rule);
-            var status = forwarding.GetLocalTunnelStatus(row.Rule.Id);
-            if (status.State != LocalTunnelState.Active) Release(row);
+            await forwarding.StartTunnelAsync(row.Rule);
+            var status = forwarding.GetTunnelStatus(row.Rule.Id);
+            if (status.State != TunnelState.Active) Release(row);
             SetStatus(row, status);
         }
         catch (OperationCanceledException)
@@ -318,18 +320,34 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         catch (Exception ex)
         {
             Release(row);
-            SetStatus(row, new(LocalTunnelState.Failed, ex.Message));
+            SetStatus(row, new(TunnelState.Failed, ex.Message));
         }
     }
 
-    private async Task DisconnectAsync(LocalTunnelRow row)
+    /// <summary>
+    /// The client cannot see which address the server binds, so the user is told before the listener
+    /// is requested. Without a window there is nobody to tell and the tunnel does not start.
+    /// </summary>
+    private async Task<bool> ConfirmRemoteBindAsync(TunnelRow row)
+    {
+        if (Host is not { } owner) return false;
+        bool confirmed = await DialogService.ConfirmAsync(owner, "Connect remote tunnel",
+            $"\"{row.Rule.Name}\" opens port {row.Rule.ListenPort} on {row.Profile.Name} for {row.Rule.TargetEndpoint}, " +
+            $"as seen from this computer.\n\n{TunnelRow.RemoteBindNotice}",
+            primaryText: "Connect");
+
+        // The dialog was open for a while: the tunnel may have been started, edited or deleted meanwhile.
+        return confirmed && !row.IsRunning && !_connections.ContainsKey(row.Rule.Id) && Tunnels.Contains(row);
+    }
+
+    private async Task DisconnectAsync(TunnelRow row)
     {
         if (!_connections.TryGetValue(row.Rule.Id, out var vm)) return;
-        SetStatus(row, new(LocalTunnelState.Stopping));
+        SetStatus(row, new(TunnelState.Stopping));
         try
         {
-            var forwarding = (ILocalTunnelConnection)vm.CreateTunnelTransport();
-            await forwarding.StopLocalTunnelAsync(row.Rule.Id);
+            var forwarding = (ITunnelConnection)vm.CreateTunnelTransport();
+            await forwarding.StopTunnelAsync(row.Rule.Id);
         }
         catch (Exception ex)
         {
@@ -343,7 +361,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         }
     }
 
-    private void Release(LocalTunnelRow row)
+    private void Release(TunnelRow row)
     {
         if (_connections.Remove(row.Rule.Id, out var connection))
         {
@@ -360,7 +378,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
         if (_store is null) return;
         try
         {
-            var saved = await _store.LoadAllLocalTunnelsAsync();
+            var saved = await _store.LoadAllTunnelsAsync();
             var profiles = (_terminals?.Sessions ?? []).ToDictionary(p => p.Id);
             var oldRows = Tunnels.ToDictionary(row => row.Rule.Id);
             Tunnels.Clear();
@@ -371,7 +389,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
                 // Running tunnels keep their row (and state); everything else shows the saved values.
                 Tunnels.Add(_connections.ContainsKey(rule.Id) && oldRows.TryGetValue(rule.Id, out var row)
                     ? row
-                    : new LocalTunnelRow(rule, profile));
+                    : new TunnelRow(rule, profile));
             }
 
             // Tunnels whose profile was deleted (their rules went with it) are disconnected.

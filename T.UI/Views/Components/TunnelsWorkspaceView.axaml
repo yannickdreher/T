@@ -17,7 +17,7 @@
 
     <UserControl.Styles>
         <!--  The column layout of the header and of every row  -->
-        <!--  Header and rows share the columns: 24,2*,2.4*,1.5*,96,100,100,40  -->
+        <!--  Header and rows share the columns: 24,2*,64,2.6*,1.5*,96,100,100,40  -->
         <Style Selector="Grid.tunnelColumns">
             <Setter Property="ColumnSpacing" Value="10" />
         </Style>
@@ -117,25 +117,28 @@
                     BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
                     BorderThickness="0,0,0,1"
                     IsVisible="{Binding HasTunnels}">
-                <Grid Classes="tunnelColumns" ColumnDefinitions="24,2*,2.4*,1.5*,96,100,100,40">
+                <Grid Classes="tunnelColumns" ColumnDefinitions="24,2*,64,2.6*,1.5*,96,100,100,40">
                     <TextBlock Grid.Column="1"
                                Classes="columnHeader"
                                Text="Name" />
                     <TextBlock Grid.Column="2"
                                Classes="columnHeader"
-                               Text="Local port → target" />
+                               Text="Type" />
                     <TextBlock Grid.Column="3"
                                Classes="columnHeader"
-                               Text="Via profile" />
+                               Text="Listener → target" />
                     <TextBlock Grid.Column="4"
-                               HorizontalAlignment="Right"
                                Classes="columnHeader"
-                               Text="Connections" />
+                               Text="Via profile" />
                     <TextBlock Grid.Column="5"
                                HorizontalAlignment="Right"
                                Classes="columnHeader"
-                               Text="↓ Received" />
+                               Text="Connections" />
                     <TextBlock Grid.Column="6"
+                               HorizontalAlignment="Right"
+                               Classes="columnHeader"
+                               Text="↓ Received" />
+                    <TextBlock Grid.Column="7"
                                HorizontalAlignment="Right"
                                Classes="columnHeader"
                                Text="↑ Sent" />
@@ -161,7 +164,7 @@
                            Text="No tunnels yet" />
                 <TextBlock HorizontalAlignment="Center"
                            Classes="hint"
-                           Text="Forward a local port through the SSH server of a terminal profile, for example to reach a database that is only accessible from the server."
+                           Text="Forward ports through the SSH server of a terminal profile: reach a database that is only accessible from the server, publish a local service on the server, or use the server as a SOCKS proxy."
                            TextAlignment="Center" />
                 <Button HorizontalAlignment="Center"
                         Classes="accent"
@@ -178,10 +181,10 @@
                      ItemsSource="{Binding Tunnels}"
                      SelectedItem="{Binding Selected}">
                 <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LocalTunnelRow">
+                    <DataTemplate x:DataType="vm:TunnelRow">
                         <Grid Background="Transparent"
                               Classes="tunnelColumns"
-                              ColumnDefinitions="24,2*,2.4*,1.5*,96,100,100,40"
+                              ColumnDefinitions="24,2*,64,2.6*,1.5*,96,100,100,40"
                               DoubleTapped="OnRowDoubleTapped">
                             <Grid.ContextMenu>
                                 <ContextMenu>
@@ -212,24 +215,28 @@
                             </StackPanel>
                             <TextBlock Grid.Column="2"
                                        Classes="cell"
+                                       Text="{Binding KindText}"
+                                       ToolTip.Tip="{Binding KindDescription}" />
+                            <TextBlock Grid.Column="3"
+                                       Classes="cell"
                                        FontFeatures="+tnum"
                                        Text="{Binding Route}"
                                        ToolTip.Tip="{Binding Route}" />
-                            <TextBlock Grid.Column="3"
+                            <TextBlock Grid.Column="4"
                                        Classes="cell"
                                        Text="{Binding Profile.Name}"
                                        ToolTip.Tip="{Binding Profile.Address}" />
-                            <TextBlock Grid.Column="4"
+                            <TextBlock Grid.Column="5"
                                        Classes="number"
                                        IsVisible="{Binding IsActive}"
                                        Text="{Binding OpenConnections}" />
-                            <TextBlock Grid.Column="5"
-                                       Classes="number"
-                                       Text="{Binding DownRate}" />
                             <TextBlock Grid.Column="6"
                                        Classes="number"
+                                       Text="{Binding DownRate}" />
+                            <TextBlock Grid.Column="7"
+                                       Classes="number"
                                        Text="{Binding UpRate}" />
-                            <Button Grid.Column="7"
+                            <Button Grid.Column="8"
                                     HorizontalAlignment="Right"
                                     AutomationProperties.Name="{Binding ToggleText}"
                                     Classes="tool"
@@ -254,7 +261,7 @@
                     IsVisible="{Binding HasSelection}">
                 <ContentControl Content="{Binding Selected}">
                     <ContentControl.ContentTemplate>
-                        <DataTemplate x:DataType="vm:LocalTunnelRow">
+                        <DataTemplate x:DataType="vm:TunnelRow">
                             <StackPanel Spacing="12">
                                 <!--  Name, state, route; connect/disconnect  -->
                                 <Grid ColumnDefinitions="*,Auto">
@@ -277,6 +284,10 @@
                                                            Text="{Binding StateText}" />
                                             </StackPanel>
                                         </Border>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Classes="detail"
+                                                   Text="{Binding KindText}"
+                                                   ToolTip.Tip="{Binding KindDescription}" />
                                         <TextBlock VerticalAlignment="Center"
                                                    Classes="detail"
                                                    FontFeatures="+tnum"

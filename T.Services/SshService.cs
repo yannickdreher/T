@@ -16,7 +16,7 @@ namespace T.Services;
 ///
 /// Threading: events are raised on background threads; consumers marshal to the UI.
 /// </summary>
-public sealed partial class SshService : ISshService, ILocalTunnelConnection
+public sealed partial class SshService : ISshService, ITunnelConnection
 {
     private const int MaxAuthAttempts = 3;
     private const int MaxHostKeyPrompts = 3;
@@ -822,7 +822,7 @@ public sealed partial class SshService : ISshService, ILocalTunnelConnection
             _status = status;
         }
         StatusChanged?.Invoke(status, error);
-        LocalTunnelsChanged?.Invoke();
+        TunnelsChanged?.Invoke();
     }
 
     private static string DescribeError(Exception ex) => ex switch
@@ -1193,7 +1193,7 @@ public sealed partial class SshService : ISshService, ILocalTunnelConnection
             lock (_sftpSync) IsClosing = true;
             try { _cts.Cancel(); } catch (ObjectDisposedException) { }
 
-            DisposeLocalTunnels();
+            DisposeTunnels();
             try { Shell?.Dispose(); } catch (Exception) { }
             DisposeSftp();
             try { if (Ssh.IsConnected) Ssh.Disconnect(); } catch (Exception) { }
