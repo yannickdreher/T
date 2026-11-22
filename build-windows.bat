@@ -8,6 +8,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "T_PUBLISH_EXE=%~dp0publish\T.exe"
+powershell -NoProfile -NonInteractive -Command "try { $target = [IO.Path]::GetFullPath($env:T_PUBLISH_EXE); $running = Get-Process -Name 'T' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and [string]::Equals($_.Path, $target, [StringComparison]::OrdinalIgnoreCase) }; if ($running) { exit 1 }; exit 0 } catch { exit 2 }"
+if errorlevel 2 (
+    echo ERROR: Could not check whether the published application is running.
+    exit /b 1
+)
+if errorlevel 1 (
+    echo ERROR: The application at "%T_PUBLISH_EXE%" is running.
+    echo Please close it before building and run this script again.
+    exit /b 1
+)
+
 echo Publishing the Windows x64 application...
 dotnet publish "T.UI\T.UI.csproj" -c Release -r win-x64 --self-contained -o "%~dp0publish"
 if errorlevel 1 (
