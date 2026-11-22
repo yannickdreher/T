@@ -404,7 +404,9 @@ public sealed class CommandSuggestionController : IDisposable
         var bounds = _terminal.Bounds;
         _popup.MaxWidth = Math.Max(200, bounds.Width - 16);
         _popup.Measure(new Size(_popup.MaxWidth, double.PositiveInfinity));
-        var size = _popup.DesiredSize;
+        // DesiredSize includes the margin, which holds the previous position: without it the
+        // popup "did not fit" below the prompt and was pushed to the top of the terminal.
+        var size = _popup.DesiredSize.Deflate(_popup.Margin);
 
         // The item text starts after marker, icon and spacing: align it with the typed text.
         const double TextOffset = 4 + 1 + 3 + 8 + 12 + 8;
