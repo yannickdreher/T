@@ -1,0 +1,260 @@
+﻿<wnd:FAAppWindow x:Class="T.UI.Views.MainWindow"
+                 xmlns="https://github.com/avaloniaui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:components="using:T.UI.Views.Components"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:models="using:T.Models"
+                 xmlns:ui="using:FluentAvalonia.UI.Controls"
+                 xmlns:vm="using:T.UI.ViewModels"
+                 xmlns:wnd="using:FluentAvalonia.UI.Windowing"
+                 Title="T"
+                 Width="1200"
+                 Height="700"
+                 d:DesignHeight="700"
+                 d:DesignWidth="1200"
+                 x:DataType="vm:MainWindowViewModel"
+                 FontSize="12"
+                 Icon="avares://T/Assets/logo.ico"
+                 RenderOptions.BitmapInterpolationMode="HighQuality"
+                 WindowState="Maximized"
+                 mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Grid Margin="8,0,8,8" RowDefinitions="32,*">
+
+        <!--  Title bar: logo + menu (the window extends its content into the title bar)  -->
+        <StackPanel Grid.Row="0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="6">
+            <Image Width="20"
+                   Height="20"
+                   Source="avares://T/Assets/logo.png" />
+            <Menu VerticalAlignment="Center">
+                <Menu.Styles>
+                    <Style Selector="MenuItem">
+                        <Setter Property="Height" Value="26" />
+                        <Setter Property="Padding" Value="8,2" />
+                    </Style>
+                </Menu.Styles>
+                <MenuItem Command="{Binding ShowSettingsCommand}" Header="Settings" />
+                <MenuItem Command="{Binding ShowAboutCommand}" Header="About" />
+            </Menu>
+        </StackPanel>
+
+        <Grid x:Name="Workspace"
+              Grid.Row="1"
+              ColumnDefinitions="42,300,Auto,*">
+            <!--
+                Activity bar: switches between terminals and tunnels. Clicking the active "Terminals"
+                again collapses the profile list (see MainWindow.axaml.cs for the column width).
+            -->
+            <Border Grid.Column="0"
+                    Margin="0,0,4,0"
+                    Classes="Panel">
+                <StackPanel Margin="3,5" Spacing="4">
+                    <Button AutomationProperties.Name="Terminals"
+                            Classes="activity"
+                            Classes.active="{Binding !ShowTunnels}"
+                            Command="{Binding ShowTerminalsCommand}"
+                            ToolTip.Tip="Terminals (click again to hide the list)">
+                        <Panel>
+                            <Border Classes="activityIndicator" />
+                            <PathIcon Data="{StaticResource window_console_regular}" />
+                        </Panel>
+                    </Button>
+                    <Button AutomationProperties.Name="Tunnels"
+                            Classes="activity"
+                            Classes.active="{Binding ShowTunnels}"
+                            Command="{Binding OpenTunnelsCommand}"
+                            ToolTip.Tip="Tunnels">
+                        <Panel>
+                            <Border Classes="activityIndicator" />
+                            <PathIcon Data="{StaticResource plug_connected_regular}" />
+                            <!--  Number of active tunnels, visible from the terminals view as well  -->
+                            <Border Classes="activityBadge"
+                                    IsVisible="{Binding TunnelsWorkspace.HasActiveTunnels}"
+                                    ToolTip.Tip="Active tunnels">
+                                <TextBlock Text="{Binding TunnelsWorkspace.ActiveCount}" />
+                            </Border>
+                        </Panel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Panel Grid.Column="1" IsVisible="{Binding ShowTerminalList}">
+                <components:TerminalsPanel DataContext="{Binding SessionsTree}" />
+            </Panel>
+
+            <GridSplitter Grid.Column="2"
+                          IsVisible="{Binding ShowTerminalList}"
+                          ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Columns" />
+
+            <!--  Terminal tabs (hidden, not closed, while the tunnels are shown)  -->
+            <Panel Grid.Column="3" IsVisible="{Binding !ShowTunnels}">
+                <!--
+                    Session tabs (styled in Styles/SessionTabs.axaml). The strip lies on the window background;
+                    the selected tab merges into the content below it: into the terminal (terminal colours) while
+                    it is shown, otherwise into the session surface (SessionView). Tabs share the width like in
+                    Windows Terminal. The tab view is the strip only: the sessions are shown below it by
+                    SessionPanesView, one or several at a time (split layouts).
+                -->
+                <Grid IsVisible="{Binding SessionsTree.HasOpenSessions}" RowDefinitions="Auto,*">
+                    <ui:FATabView x:Name="SessionTabs"
+                                  CanReorderTabs="True"
+                                  Classes.split="{Binding SessionsTree.IsSplit}"
+                                  Classes.terminal="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0, FallbackValue=False}"
+                                  CloseButtonOverlayMode="Auto"
+                                  IsAddTabButtonVisible="True"
+                                  SelectedItem="{Binding SessionsTree.ActiveSession}"
+                                  TabItemsSource="{Binding SessionsTree.OpenSessions}"
+                                  TabWidthMode="Equal">
+                        <ui:FATabView.TabItemTemplate>
+                            <DataTemplate x:DataType="vm:SessionViewModel">
+                                <!--
+                                    Content is null on purpose: without it the tab view shows the session itself as
+                                    the tab's content, which resolves to the SessionView that already sits in a pane.
+                                -->
+                                <ui:FATabViewItem Content="{x:Null}" ToolTip.Tip="{Binding Session.Address}">
+                                    <ui:FATabViewItem.Header>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Classes="status"
+                                                     Classes.busy="{Binding IsBusy}"
+                                                     Classes.connected="{Binding IsConnected}"
+                                                     Classes.error="{Binding HasConnectionError}" />
+                                            <TextBlock MaxWidth="220"
+                                                       Text="{Binding TabTitle}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </ui:FATabViewItem.Header>
+                                </ui:FATabViewItem>
+                            </DataTemplate>
+                        </ui:FATabView.TabItemTemplate>
+
+                        <!--  Layout of the terminals: one, or several panes  -->
+                        <ui:FATabView.TabStripFooter>
+                            <Button Margin="0,0,2,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Terminal layout"
+                                    Classes="tool"
+                                    ToolTip.Tip="Terminal layout">
+                                <PathIcon Data="{StaticResource grid_regular}" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.One}"
+                                                  Header="Single terminal">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsSingleLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.SideBySide}"
+                                                  Header="Two side by side">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsSideBySideLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.Stacked}"
+                                                  Header="Two stacked">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsStackedLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.Grid}"
+                                                  Header="Four in a grid">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsGridLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </ui:FATabView.TabStripFooter>
+                    </ui:FATabView>
+
+                    <components:SessionPanesView Grid.Row="1"
+                                                 ActivateCommand="{Binding SessionsTree.ActivateSessionCommand}"
+                                                 ActiveSession="{Binding SessionsTree.ActiveSession}"
+                                                 Layout="{Binding SessionsTree.Layout}"
+                                                 Panes="{Binding SessionsTree.Panes}" />
+                </Grid>
+
+                <!--  Welcome screen (no session open)  -->
+                <Border Classes="Panel" IsVisible="{Binding !SessionsTree.HasOpenSessions}">
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="10">
+                        <Image Width="120"
+                               Height="120"
+                               Margin="0,0,0,8"
+                               Source="avares://T/Assets/logo.png" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Text="Welcome" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="Double-click a session in the sidebar to connect, or create a new one." />
+                        <Button Margin="0,8,0,0"
+                                Padding="16,6"
+                                HorizontalAlignment="Center"
+                                Classes="accent"
+                                Command="{Binding SessionsTree.NewSessionCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Classes="small" Data="{StaticResource plug_connected_add_regular}" />
+                                <TextBlock Text="New terminal profile" />
+                            </StackPanel>
+                        </Button>
+                        <Border Margin="0,16,0,0"
+                                Padding="16,10"
+                                HorizontalAlignment="Center"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource window_console_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Terminal with remote system monitor" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource folder_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="SFTP explorer with drag and drop upload" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Classes="small file" Data="{StaticResource key_regular}" />
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Keys, jump hosts and known_hosts shared with OpenSSH" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Panel>
+
+            <!--  Tunnels: list with state and traffic, details of the selected tunnel (full width)  -->
+            <Panel Grid.Column="1"
+                   Grid.ColumnSpan="3"
+                   IsVisible="{Binding ShowTunnels}">
+                <components:TunnelsWorkspaceView DataContext="{Binding TunnelsWorkspace}" />
+            </Panel>
+        </Grid>
+    </Grid>
+</wnd:FAAppWindow>

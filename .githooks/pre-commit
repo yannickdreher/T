@@ -1,0 +1,23 @@
+#!/bin/sh
+# Rejects a commit when ./lint.ps1 fails (XAML Styler and dotnet format, the same check as in CI).
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skip for a single commit (e.g. work in progress):  git commit --no-verify
+#
+# The check looks at the files in the working tree, not only at what is staged.
+
+root=$(git rev-parse --show-toplevel) || exit 1
+
+if command -v pwsh >/dev/null 2>&1; then
+    shell=pwsh
+elif command -v powershell >/dev/null 2>&1; then
+    shell=powershell
+else
+    echo "pre-commit: PowerShell (pwsh) not found - lint skipped. CI will still run it." >&2
+    exit 0
+fi
+
+if ! "$shell" -NoProfile -File "$root/lint.ps1"; then
+    echo >&2
+    echo "pre-commit: lint failed. Run ./lint.ps1 -Fix, stage the changes and commit again." >&2
+    exit 1
+fi

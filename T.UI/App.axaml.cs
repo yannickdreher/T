@@ -1,0 +1,134 @@
+using System;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Media;
+using Avalonia.Styling;
+using FluentAvalonia.UI.Controls;
+using Microsoft.Extensions.DependencyInjection;
+using T.Abstractions;
+using T.Models;
+using T.UI.Abstractions;
+using T.UI.Extensions;
+using T.UI.Services;
+using T.UI.ViewModels;
+using T.UI.Views;
+using T.UI.Views.Dialogs;
+using Velopack;
+
+namespace T.UI;
+
+public partial class App : Application
+{
+    private ServiceProvider? _serviceProvider;
+    private ISettingsService? _settingsService;
+    private IUpdateService? _updateService;
+
+    public IServiceProvider Services =>
+        _serviceProvider ?? throw new InvalidOperationException("Service provider is not initialized.");
+
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var collection = new ServiceCollection();
+            collection.AddCommonServices();
+
+            var services = collection.BuildServiceProvider();
+            _serviceProvider = services;
+
+            _settingsService = services.GetRequiredService<ISettingsService>();
+            _updateService = services.GetRequiredService<IUpdateService>();
+
+            ApplyTheme(_settingsService.Current);
+            _settingsService.SettingsChanged += ApplyTheme;
+
+            var mainWindow = services.GetRequiredService<MainWindow>();
+            desktop.MainWindow = mainWindow;
+
+            services.GetRequiredService<IWindowProvider>().MainWindow = mainWindow;
+
+            mainWindow.Opened += (_, _) => ShellIconCache.RefreshAfterUpdate();
+
+            if (_settingsService.Current.Update.CheckForUpdatesOnStartup)
+                mainWindow.Opened += async (_, _) => await CheckForUpdatesAsync(mainWindow);
+
+            // Disposes the SSH manager (and with it all open connections) on exit.
+            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
+        }
+
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private void ApplyTheme(AppSettings settings)
+    {
+        RequestedThemeVariant = settings.General.Theme switch
+        {
+            "Light" => ThemeVariant.Light,
+            "Dark" => ThemeVariant.Dark,
+            _ => ThemeVariant.Default
+        };
+
+        // The selected session tab takes the terminal colours and merges into the terminal (Styles/SessionTabs.axaml).
+        Resources["TerminalBackgroundBrush"] = new SolidColorBrush(settings.Terminal.GetBackgroundColor());
+        Resources["TerminalForegroundBrush"] = new SolidColorBrush(settings.Terminal.GetForegroundColor());
+    }
+
+    private async Task CheckForUpdatesAsync(Window mainWindow)
+    {
+        if (_updateService is null || _serviceProvider is null) return;
+
+        var updateInfo = await _updateService.CheckForUpdatesAsync();
+
+        if (updateInfo != null)
+            await ShowUpdateDialogAsync(mainWindow, updateInfo);
+    }
+
+    private async Task ShowUpdateDialogAsync(Window owner, UpdateInfo updateInfo)
+    {
+        if (_serviceProvider is null) return;
+
+        var vm = ActivatorUtilities.CreateInstance<UpdateDialogViewModel>(_serviceProvider, updateInfo);
+        var view = _serviceProvider.GetRequiredService<UpdateDialog>();
+        view.DataContext = vm;
+
+        var dialog = new FAContentDialog
+        {
+            Title = "Update Available",
+            PrimaryButtonText = "Install",
+            CloseButtonText = "Later",
+            DefaultButton = FAContentDialogButton.Primary,
+            Content = view
+        };
+
+        if (await dialog.ShowAsync(owner) != FAContentDialogResult.Primary)
+            return;
+
+        var progressDialog = new FAContentDialog
+        {
+            Title = "Installing Update",
+            Content = "Downloading and installing update...\nThe application will restart automatically.",
+            IsPrimaryButtonEnabled = false,
+            IsSecondaryButtonEnabled = false
+        };
+
+        _ = progressDialog.ShowAsync(owner);
+        try
+        {
+            await vm.InstallAsync();
+        }
+        catch (Exception ex)
+        {
+            // Without this the non-closable progress dialog would block the app forever.
+            progressDialog.Hide();
+            await DialogService.ShowMessageAsync(owner, "Update failed", ex.Message);
+        }
+    }
+}

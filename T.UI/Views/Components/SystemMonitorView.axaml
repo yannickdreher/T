@@ -1,0 +1,107 @@
+﻿<UserControl x:Class="T.UI.Views.Components.SystemMonitorView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="28"
+             d:DesignWidth="800"
+             x:DataType="vm:SystemMonitorViewModel"
+             IsVisible="{Binding IsAvailable}"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:SystemMonitorViewModel />
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.metricLabel">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.metricValue">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!--  Wide enough for "1023.9 KB/s"  -->
+        <Style Selector="TextBlock.netRate">
+            <Setter Property="Width" Value="64" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+        <Style Selector="ProgressBar.metric">
+            <Setter Property="Width" Value="56" />
+            <Setter Property="Height" Value="5" />
+            <Setter Property="MinWidth" Value="56" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <StackPanel VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="14">
+
+        <!--  CPU  -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTip.Tip="Remote CPU usage">
+            <TextBlock Classes="metricLabel" Text="CPU" />
+            <ProgressBar Classes="metric" Value="{Binding CpuPercent}" />
+            <TextBlock MinWidth="32"
+                       Classes="metricValue"
+                       Text="{Binding CpuDisplay}" />
+        </StackPanel>
+
+        <!--  RAM  -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTip.Tip="{Binding RamDisplay}">
+            <TextBlock Classes="metricLabel" Text="RAM" />
+            <ProgressBar Classes="metric" Value="{Binding RamPercent}" />
+            <TextBlock MinWidth="32"
+                       Classes="metricValue"
+                       Text="{Binding RamPercentDisplay}" />
+        </StackPanel>
+
+        <!--  Disk  -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTip.Tip="{Binding DiskDisplay}">
+            <TextBlock Classes="metricLabel" Text="DISK" />
+            <ProgressBar Classes="metric" Value="{Binding DiskPercent}" />
+            <TextBlock MinWidth="32"
+                       Classes="metricValue"
+                       Text="{Binding DiskPercentDisplay}" />
+        </StackPanel>
+
+        <!--
+            Network - last, because its values change width the most. Each rate sits in
+            a fixed-width, right-aligned box with tabular digits, so changing numbers
+            never move the arrows or anything to their right.
+        -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTip.Tip="Remote network throughput">
+            <TextBlock Classes="metricLabel" Text="NET" />
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <TextBlock Classes="metricValue"
+                           Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                           Text="↓" />
+                <TextBlock Classes="metricValue netRate"
+                           Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                           Text="{Binding NetworkDownDisplay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <TextBlock Classes="metricValue"
+                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                           Text="↑" />
+                <TextBlock Classes="metricValue netRate"
+                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                           Text="{Binding NetworkUpDisplay}" />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

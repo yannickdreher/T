@@ -1,0 +1,387 @@
+﻿<UserControl x:Class="T.UI.Views.Components.TunnelsWorkspaceView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:T.UI.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="640"
+             d:DesignWidth="1100"
+             x:DataType="vm:TunnelsWorkspaceViewModel"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:TunnelsWorkspaceViewModel />
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <!--  The column layout of the header and of every row  -->
+        <!--  Header and rows share the columns: 24,2*,64,2.6*,1.5*,96,100,100,40  -->
+        <Style Selector="Grid.tunnelColumns">
+            <Setter Property="ColumnSpacing" Value="10" />
+        </Style>
+        <Style Selector="TextBlock.columnHeader">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.cell">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.detail">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.number">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+        <Style Selector="ListBox.tunnels ListBoxItem">
+            <Setter Property="Padding" Value="12,7" />
+        </Style>
+
+        <!--  Detail cards (same look as the system monitor)  -->
+        <Style Selector="Border.metricCard">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="TextBlock.metricTitle">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.metricValue">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Classes="Panel">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+            <!--  Header  -->
+            <Grid Margin="16,12,12,8" ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Tunnels" />
+                    <TextBlock VerticalAlignment="Center"
+                               Classes="detail"
+                               Text="{Binding Summary}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="2">
+                    <Button Margin="0,0,6,0"
+                            Classes="accent"
+                            Command="{Binding AddCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Classes="small" Data="{StaticResource add_regular}" />
+                            <TextBlock Text="New tunnel" />
+                        </StackPanel>
+                    </Button>
+                    <Button AutomationProperties.Name="Edit tunnel"
+                            Classes="tool"
+                            Command="{Binding EditCommand}"
+                            ToolTip.Tip="Edit (disconnect first)">
+                        <PathIcon Data="{StaticResource document_edit_regular}" />
+                    </Button>
+                    <Button AutomationProperties.Name="Delete tunnel"
+                            Classes="tool"
+                            Command="{Binding DeleteCommand}"
+                            ToolTip.Tip="Delete (disconnect first)">
+                        <PathIcon Data="{StaticResource delete_regular}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <ui:FAInfoBar Grid.Row="1"
+                          Margin="12,0,12,8"
+                          IsClosable="False"
+                          IsOpen="{Binding LoadError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                          IsVisible="{Binding LoadError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                          Message="{Binding LoadError}"
+                          Severity="Error" />
+
+            <!--  Column headers  -->
+            <Border Grid.Row="2"
+                    Padding="16,0,16,6"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    IsVisible="{Binding HasTunnels}">
+                <Grid Classes="tunnelColumns" ColumnDefinitions="24,2*,64,2.6*,1.5*,96,100,100,40">
+                    <TextBlock Grid.Column="1"
+                               Classes="columnHeader"
+                               Text="Name" />
+                    <TextBlock Grid.Column="2"
+                               Classes="columnHeader"
+                               Text="Type" />
+                    <TextBlock Grid.Column="3"
+                               Classes="columnHeader"
+                               Text="Listener → target" />
+                    <TextBlock Grid.Column="4"
+                               Classes="columnHeader"
+                               Text="Via profile" />
+                    <TextBlock Grid.Column="5"
+                               HorizontalAlignment="Right"
+                               Classes="columnHeader"
+                               Text="Connections" />
+                    <TextBlock Grid.Column="6"
+                               HorizontalAlignment="Right"
+                               Classes="columnHeader"
+                               Text="↓ Received" />
+                    <TextBlock Grid.Column="7"
+                               HorizontalAlignment="Right"
+                               Classes="columnHeader"
+                               Text="↑ Sent" />
+                </Grid>
+            </Border>
+
+            <!--  Empty state  -->
+            <StackPanel Grid.Row="2"
+                        Grid.RowSpan="2"
+                        MaxWidth="420"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding !HasTunnels}"
+                        Spacing="10">
+                <PathIcon Width="32"
+                          Height="32"
+                          HorizontalAlignment="Center"
+                          Classes="file"
+                          Data="{StaticResource plug_connected_regular}" />
+                <TextBlock HorizontalAlignment="Center"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Text="No tunnels yet" />
+                <TextBlock HorizontalAlignment="Center"
+                           Classes="hint"
+                           Text="Forward ports through the SSH server of a terminal profile: reach a database that is only accessible from the server, publish a local service on the server, or use the server as a SOCKS proxy."
+                           TextAlignment="Center" />
+                <Button HorizontalAlignment="Center"
+                        Classes="accent"
+                        Command="{Binding AddCommand}"
+                        Content="New tunnel" />
+            </StackPanel>
+
+            <!--  Tunnels  -->
+            <ListBox Grid.Row="3"
+                     Margin="4,2"
+                     Background="Transparent"
+                     Classes="tunnels"
+                     IsVisible="{Binding HasTunnels}"
+                     ItemsSource="{Binding Tunnels}"
+                     SelectedItem="{Binding Selected}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TunnelRow">
+                        <Grid Background="Transparent"
+                              Classes="tunnelColumns"
+                              ColumnDefinitions="24,2*,64,2.6*,1.5*,96,100,100,40"
+                              DoubleTapped="OnRowDoubleTapped">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Command="{ReflectionBinding $parent[UserControl].DataContext.ToggleCommand}"
+                                              CommandParameter="{Binding}"
+                                              Header="{Binding ToggleText}" />
+                                    <Separator />
+                                    <MenuItem Command="{ReflectionBinding $parent[UserControl].DataContext.EditCommand}"
+                                              CommandParameter="{Binding}"
+                                              Header="Edit tunnel" />
+                                    <MenuItem Command="{ReflectionBinding $parent[UserControl].DataContext.DeleteCommand}"
+                                              CommandParameter="{Binding}"
+                                              Header="Delete tunnel" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+
+                            <!--  State: colour plus text  -->
+                            <Ellipse Classes="status"
+                                     Classes.busy="{Binding IsBusy}"
+                                     Classes.connected="{Binding IsActive}"
+                                     Classes.error="{Binding IsFailed}"
+                                     ToolTip.Tip="{Binding StateText}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding Rule.Name}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Classes="detail" Text="{Binding StateText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2"
+                                       Classes="cell"
+                                       Text="{Binding KindText}"
+                                       ToolTip.Tip="{Binding KindDescription}" />
+                            <TextBlock Grid.Column="3"
+                                       Classes="cell"
+                                       FontFeatures="+tnum"
+                                       Text="{Binding Route}"
+                                       ToolTip.Tip="{Binding Route}" />
+                            <TextBlock Grid.Column="4"
+                                       Classes="cell"
+                                       Text="{Binding Profile.Name}"
+                                       ToolTip.Tip="{Binding Profile.Address}" />
+                            <TextBlock Grid.Column="5"
+                                       Classes="number"
+                                       IsVisible="{Binding IsActive}"
+                                       Text="{Binding OpenConnections}" />
+                            <TextBlock Grid.Column="6"
+                                       Classes="number"
+                                       Text="{Binding DownRate}" />
+                            <TextBlock Grid.Column="7"
+                                       Classes="number"
+                                       Text="{Binding UpRate}" />
+                            <Button Grid.Column="8"
+                                    HorizontalAlignment="Right"
+                                    AutomationProperties.Name="{Binding ToggleText}"
+                                    Classes="tool"
+                                    Command="{ReflectionBinding $parent[UserControl].DataContext.ToggleCommand}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip.Tip="{Binding ToggleText}">
+                                <Panel>
+                                    <PathIcon Data="{StaticResource play_regular}" IsVisible="{Binding !IsRunning}" />
+                                    <PathIcon Data="{StaticResource stop_regular}" IsVisible="{Binding IsRunning}" />
+                                </Panel>
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!--  Details of the selected tunnel  -->
+            <Border Grid.Row="4"
+                    Padding="16,12,16,16"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
+                    IsVisible="{Binding HasSelection}">
+                <ContentControl Content="{Binding Selected}">
+                    <ContentControl.ContentTemplate>
+                        <DataTemplate x:DataType="vm:TunnelRow">
+                            <StackPanel Spacing="12">
+                                <!--  Name, state, route; connect/disconnect  -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <TextBlock VerticalAlignment="Center"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding Rule.Name}" />
+                                        <Border Padding="8,3"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="10">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Ellipse Classes="status"
+                                                         Classes.busy="{Binding IsBusy}"
+                                                         Classes.connected="{Binding IsActive}"
+                                                         Classes.error="{Binding IsFailed}" />
+                                                <TextBlock VerticalAlignment="Center"
+                                                           FontSize="11"
+                                                           Text="{Binding StateText}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Classes="detail"
+                                                   Text="{Binding KindText}"
+                                                   ToolTip.Tip="{Binding KindDescription}" />
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Classes="detail"
+                                                   FontFeatures="+tnum"
+                                                   Text="{Binding Route}" />
+                                        <TextBlock VerticalAlignment="Center" Classes="detail">
+                                            <Run Text="via " /><Run Text="{Binding Profile.Name}" /><Run Text=" (" /><Run Text="{Binding Profile.Address}" /><Run Text=")" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Command="{ReflectionBinding $parent[UserControl].DataContext.ToggleCommand}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Panel>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource play_regular}"
+                                                          IsVisible="{Binding !IsRunning}" />
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource stop_regular}"
+                                                          IsVisible="{Binding IsRunning}" />
+                                            </Panel>
+                                            <TextBlock Text="{Binding ToggleText}" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <ui:FAInfoBar IsClosable="False"
+                                              IsOpen="{Binding HasError}"
+                                              IsVisible="{Binding HasError}"
+                                              Message="{Binding Error}"
+                                              Severity="Error" />
+
+                                <!--  Figures  -->
+                                <UniformGrid ColumnSpacing="10" Columns="4">
+                                    <Border Classes="metricCard">
+                                        <StackPanel>
+                                            <TextBlock Classes="metricTitle" Text="Uptime" />
+                                            <TextBlock Classes="metricValue" Text="{Binding Uptime}" />
+                                            <TextBlock Classes="detail" Text="{Binding StateText}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="metricCard">
+                                        <StackPanel>
+                                            <TextBlock Classes="metricTitle" Text="Connections" />
+                                            <TextBlock Classes="metricValue" Text="{Binding OpenConnections, StringFormat='{}{0} open'}" />
+                                            <TextBlock Classes="detail" Text="{Binding TotalConnections, StringFormat='{}{0} since connecting'}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="metricCard">
+                                        <StackPanel>
+                                            <TextBlock Classes="metricTitle" Text="↓ Received" />
+                                            <TextBlock Classes="metricValue"
+                                                       Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                                       Text="{Binding DownRate}" />
+                                            <TextBlock Classes="detail" Text="{Binding ReceivedTotal, StringFormat='{}{0} in total'}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="metricCard">
+                                        <StackPanel>
+                                            <TextBlock Classes="metricTitle" Text="↑ Sent" />
+                                            <TextBlock Classes="metricValue"
+                                                       Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                                       Text="{Binding UpRate}" />
+                                            <TextBlock Classes="detail" Text="{Binding SentTotal, StringFormat='{}{0} in total'}" />
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+
+                                <!--  Throughput over the last five minutes  -->
+                                <Border Classes="metricCard">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="metricTitle" Text="Throughput · last 5 minutes" />
+                                            <TextBlock Grid.Column="1" Classes="detail">
+                                                <Run Foreground="{DynamicResource SystemFillColorSuccessBrush}" Text="━ received" /><Run Text="   " /><Run Foreground="{DynamicResource SystemFillColorCautionBrush}" Text="╍ sent" /><Run Text="   ·   peak " /><Run Text="{Binding PeakRate}" />
+                                            </TextBlock>
+                                        </Grid>
+                                        <Panel>
+                                            <controls:MonitorSparkline Height="120"
+                                                                       LineBrush="{DynamicResource SystemFillColorSuccessBrush}"
+                                                                       Points="{Binding History}"
+                                                                       SecondaryBrush="{DynamicResource SystemFillColorCautionBrush}" />
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Classes="hint"
+                                                       IsVisible="{Binding !IsRunning}"
+                                                       Text="Connect the tunnel to see live traffic." />
+                                        </Panel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                </ContentControl>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

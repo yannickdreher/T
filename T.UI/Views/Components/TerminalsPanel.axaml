@@ -1,0 +1,174 @@
+﻿<UserControl x:Class="T.UI.Views.Components.TerminalsPanel"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:T.UI.Models"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="600"
+             d:DesignWidth="300"
+             x:DataType="vm:SessionsTreeViewModel"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:SessionsTreeViewModel />
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <Style Selector="TreeViewItem.drag-over">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        </Style>
+        <Style Selector="TreeViewItem.drag-source">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Classes="Panel">
+        <Grid RowDefinitions="Auto,Auto,*">
+
+            <!--  Header  -->
+            <Grid Grid.Row="0"
+                  Margin="10,6,6,2"
+                  ColumnDefinitions="*,Auto">
+                <TextBlock Classes="paneTitle" Text="Terminals" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="1">
+                    <Button Classes="tool"
+                            Command="{Binding NewSessionCommand}"
+                            ToolTip.Tip="New terminal profile">
+                        <PathIcon Data="{StaticResource plug_connected_add_regular}" />
+                    </Button>
+                    <Button Classes="tool"
+                            Command="{Binding NewFolderCommand}"
+                            ToolTip.Tip="New folder">
+                        <PathIcon Data="{StaticResource folder_add_regular}" />
+                    </Button>
+                    <Border Classes="toolSeparator" />
+                    <Button Classes="tool"
+                            Command="{Binding EditSelectedCommand}"
+                            ToolTip.Tip="Edit (F2)">
+                        <PathIcon Data="{StaticResource document_edit_regular}" />
+                    </Button>
+                    <Button Classes="tool"
+                            Command="{Binding DeleteSelectedCommand}"
+                            ToolTip.Tip="Delete (Del)">
+                        <PathIcon Data="{StaticResource delete_regular}" />
+                    </Button>
+                    <Border Classes="toolSeparator" />
+                    <!--  Less frequent actions; keeps the header narrow enough for the title  -->
+                    <Button AutomationProperties.Name="More actions"
+                            Classes="tool"
+                            ToolTip.Tip="More actions">
+                        <PathIcon Data="{StaticResource more_horizontal_regular}" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Command="{Binding ImportOpenSshConfigCommand}" Header="Import OpenSSH configuration…">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource document_arrow_down_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Command="{Binding ExpandAllFoldersCommand}" Header="Expand all folders">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource chevron_down_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Command="{Binding CollapseAllFoldersCommand}" Header="Collapse all folders">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource chevron_up_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!--  Search  -->
+            <TextBox Grid.Row="1"
+                     Margin="8,4,8,6"
+                     Classes="clearButton"
+                     PlaceholderText="Search terminals"
+                     Text="{Binding SearchText}">
+                <TextBox.InnerLeftContent>
+                    <PathIcon Margin="8,0,0,0"
+                              Classes="small file"
+                              Data="{StaticResource search_regular}" />
+                </TextBox.InnerLeftContent>
+            </TextBox>
+
+            <TreeView x:Name="SessionTreeView"
+                      Grid.Row="2"
+                      Padding="4,0,4,4"
+                      HorizontalAlignment="Stretch"
+                      ContainerClearing="OnTreeViewContainerClearing"
+                      ContainerPrepared="OnTreeViewContainerPrepared"
+                      DoubleTapped="OnSessionDoubleTapped"
+                      ItemsSource="{Binding TreeNodes}"
+                      KeyDown="OnTreeKeyDown"
+                      PointerPressed="OnEmptyAreaPressed"
+                      SelectedItem="{Binding SelectedTreeNode}">
+
+                <TreeView.DataTemplates>
+                    <DataTemplate DataType="models:FolderTreeNode">
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="8"
+                              DragDrop.AllowDrop="True">
+                            <Image Grid.Column="0"
+                                   Classes="fileIcon"
+                                   Source="{Binding Converter={StaticResource FileIconConverter}}" />
+                            <TextBlock Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding Name}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="models:SessionTreeNode">
+                        <!--  A saved session can be open in several tabs: the badge shows how many  -->
+                        <Grid ColumnDefinitions="Auto,*,Auto"
+                              ColumnSpacing="8"
+                              DragDrop.AllowDrop="False"
+                              ToolTip.Tip="{Binding Session.Address}">
+                            <PathIcon Grid.Column="0"
+                                      VerticalAlignment="Center"
+                                      Classes="small file"
+                                      Data="{StaticResource window_console_regular}" />
+                            <TextBlock Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding Name}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Border Grid.Column="2"
+                                    Classes="countBadge"
+                                    IsVisible="{Binding HasOpenTabs}"
+                                    ToolTip.Tip="{Binding OpenTabs, StringFormat='Open in {0} tab(s)'}">
+                                <TextBlock Text="{Binding OpenTabs}" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </TreeView.DataTemplates>
+
+                <TreeView.ItemTemplate>
+                    <TreeDataTemplate ItemsSource="{Binding Children}">
+                        <ContentControl Content="{Binding}" />
+                    </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+
+            <!--  Empty state  -->
+            <StackPanel Grid.Row="2"
+                        Margin="16"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding IsEmpty}"
+                        Spacing="6">
+                <TextBlock HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="{Binding EmptyText}"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

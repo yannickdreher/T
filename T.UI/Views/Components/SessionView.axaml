@@ -1,0 +1,163 @@
+﻿<UserControl x:Class="T.UI.Views.Components.SessionView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:components="using:T.UI.Views.Components"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="600"
+             d:DesignWidth="800"
+             x:DataType="vm:SessionViewModel"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:SessionViewModel />
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <!--
+            Session surface: continues the selected tab of the tab strip (same color and border). The top
+            left corner stays square because the first tab sits on it; the content is clipped to the corners.
+        -->
+        <Style Selector="Border.sessionSurface">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TabViewBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1,0,1,1" />
+            <Setter Property="CornerRadius" Value="0,4,4,4" />
+        </Style>
+        <!--  One of several panes: SessionPanesView draws the frame (Border.pane)  -->
+        <Style Selector="Border.sessionSurface.split">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Classes="sessionSurface"
+            Classes.split="{Binding IsSplitPane}"
+            ClipToBounds="True">
+        <Grid RowDefinitions="*,Auto">
+
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <!--  Only visibility changes, so the terminal keeps its state.  -->
+                <Panel>
+                    <ContentControl x:Name="TerminalHost" IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}" />
+                    <components:SftpExplorerView IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}" />
+                    <Border IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=2}">
+                        <components:SystemMonitorDashboard DataContext="{Binding SystemMonitor}" />
+                    </Border>
+                </Panel>
+
+                <!--
+                    Views of this session. On the right edge, so the selected tab above still merges
+                    into the terminal, and every session (pane) carries its own switch.
+                -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1,0,0,0">
+                    <StackPanel Width="36"
+                                Margin="3,6"
+                                Spacing="4">
+                        <Button AutomationProperties.Name="Terminal"
+                                Classes="activity"
+                                Classes.active="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}"
+                                Command="{Binding SelectSessionTabCommand}"
+                                CommandParameter="0"
+                                ToolTip.Tip="Terminal">
+                            <Panel>
+                                <Border Classes="activityIndicator" />
+                                <PathIcon Data="{StaticResource window_console_regular}" />
+                            </Panel>
+                        </Button>
+                        <Button AutomationProperties.Name="Files"
+                                Classes="activity"
+                                Classes.active="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}"
+                                Command="{Binding SelectSessionTabCommand}"
+                                CommandParameter="1"
+                                ToolTip.Tip="Files (SFTP)">
+                            <Panel>
+                                <Border Classes="activityIndicator" />
+                                <PathIcon Data="{StaticResource folder_open_regular}" />
+                            </Panel>
+                        </Button>
+                        <Button AutomationProperties.Name="Monitor"
+                                Classes="activity"
+                                Classes.active="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=2}"
+                                Command="{Binding SelectSessionTabCommand}"
+                                CommandParameter="2"
+                                ToolTip.Tip="System monitor">
+                            <Panel>
+                                <Border Classes="activityIndicator" />
+                                <PathIcon Data="{StaticResource pulse_regular}" />
+                            </Panel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <components:SessionStatusBarView Grid.Row="1" />
+
+            <!--  Connecting / reconnecting  -->
+            <Border Grid.RowSpan="2"
+                    Background="{DynamicResource OverlayBackgroundBrush}"
+                    IsHitTestVisible="True"
+                    IsVisible="{Binding ShowOverlay, FallbackValue=False}">
+                <Border Padding="28,22"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        BoxShadow="0 8 32 0 #40000000"
+                        CornerRadius="{DynamicResource OverlayCornerRadius}">
+                    <StackPanel Width="280" Spacing="16">
+                        <ProgressBar IsIndeterminate="True" />
+                        <TextBlock HorizontalAlignment="Center"
+                                   Text="{Binding OverlayMessage}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                        <Button Padding="24,6"
+                                HorizontalAlignment="Center"
+                                Command="{Binding CancelReconnectCommand}"
+                                Content="Cancel" />
+                    </StackPanel>
+                </Border>
+            </Border>
+
+            <!--  Connection error: keeps the tab (and terminal output) open for a retry  -->
+            <Border Grid.Row="0"
+                    Margin="12"
+                    Padding="12"
+                    VerticalAlignment="Bottom"
+                    Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                    BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource OverlayCornerRadius}"
+                    IsVisible="{Binding HasConnectionError}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <PathIcon Grid.Column="0"
+                              Width="18"
+                              Height="18"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource plug_disconnected_regular}"
+                              Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
+                    <SelectableTextBlock Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         Text="{Binding ConnectionError}"
+                                         TextWrapping="Wrap" />
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Padding="16,6"
+                                Classes="accent"
+                                Command="{Binding RetryConnectCommand}"
+                                Content="Retry" />
+                        <Button Padding="16,6"
+                                Command="{Binding CloseSessionCommand}"
+                                Content="Close" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,28 @@
+﻿<Application x:Class="T.UI.App"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:T.UI"
+             xmlns:sty="using:FluentAvalonia.Styling">
+
+    <Application.DataTemplates>
+        <local:SessionViewCache />
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://T/Resources/Theme.axaml" />
+                <ResourceInclude Source="avares://T/Resources/Icons.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme DensityStyle="Compact" />
+        <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        <StyleInclude Source="avares://T/Styles/AppStyles.axaml" />
+        <StyleInclude Source="avares://T/Styles/SessionTabs.axaml" />
+    </Application.Styles>
+</Application>

@@ -1,0 +1,70 @@
+﻿<UserControl x:Class="T.UI.Views.Dialogs.SessionEditorDialog"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:T.Models"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:Name="EditorRoot"
+             x:DataType="models:SshSession"
+             mc:Ignorable="d">
+
+    <StackPanel Width="460" Spacing="8">
+        <!--  Validation error (set by the owner when "Save" is clicked with invalid input)  -->
+        <ui:FAInfoBar x:Name="ValidationInfo"
+                      IsClosable="False"
+                      IsOpen="False"
+                      IsVisible="False"
+                      Severity="Error" />
+
+        <TextBlock Classes="sectionHeader" Text="Connection" />
+        <TextBox PlaceholderText="Name (defaults to the host)" Text="{Binding Name}" />
+        <Grid ColumnDefinitions="*,110" ColumnSpacing="8">
+            <TextBox Grid.Column="0"
+                     PlaceholderText="Host name or IP address"
+                     Text="{Binding Host}" />
+            <ui:FANumberBox Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            Maximum="65535"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Compact"
+                            ToolTip.Tip="Port"
+                            Value="{Binding Port}" />
+        </Grid>
+        <StackPanel Spacing="4">
+            <TextBlock Classes="hint" Text="Connect via jump host" />
+            <ComboBox x:Name="ProxyJumpCombo" HorizontalAlignment="Stretch" />
+        </StackPanel>
+
+        <TextBlock Classes="sectionHeader" Text="Authentication" />
+        <TextBox PlaceholderText="User name" Text="{Binding Username}" />
+        <TextBox Classes="revealPasswordButton"
+                 PasswordChar="●"
+                 PlaceholderText="Password (optional when using a key)"
+                 Text="{Binding Password}" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+            <TextBox Grid.Column="0"
+                     PlaceholderText="Private key file (optional)"
+                     Text="{Binding PrivateKeyPath}" />
+            <Button Grid.Column="1"
+                    Click="OnBrowsePrivateKey"
+                    Content="Browse..." />
+        </Grid>
+        <TextBox Classes="revealPasswordButton"
+                 PasswordChar="●"
+                 PlaceholderText="Key passphrase (if the key is encrypted)"
+                 Text="{Binding PrivateKeyPassword}" />
+        <TextBlock Classes="hint" Text="Without a key file the default keys ~/.ssh/id_ed25519, id_ecdsa and id_rsa are offered (see Settings)." />
+        <StackPanel Spacing="4">
+            <TextBlock Classes="hint" Text="SSH certificate from step-ca (offered first, CAs are set up in Settings)" />
+            <ComboBox x:Name="StepProfileCombo" HorizontalAlignment="Stretch" />
+        </StackPanel>
+
+        <TextBlock Classes="sectionHeader" Text="Notes" />
+        <TextBox MinHeight="56"
+                 AcceptsReturn="True"
+                 PlaceholderText="Description"
+                 Text="{Binding Description}"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

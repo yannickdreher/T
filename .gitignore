@@ -360,3 +360,13 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Local planning notes (feature briefs)
+docs/
+
+# Editor workspace files of individual contributors (the shared VS Code setup is in .vscode/)
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+.idea/
+.fleet/
+.history/

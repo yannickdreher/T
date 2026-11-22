@@ -1,0 +1,9 @@
+﻿<UserControl x:Class="T.UI.Views.Dialogs.UpdateDialog"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:T.UI.ViewModels"
+             x:DataType="vm:UpdateDialogViewModel">
+    <StackPanel MinWidth="420" Spacing="8">
+        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

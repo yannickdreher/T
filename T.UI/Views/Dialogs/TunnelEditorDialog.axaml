@@ -1,0 +1,101 @@
+﻿<UserControl x:Class="T.UI.Views.Dialogs.TunnelEditorDialog"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:T.Models"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             x:DataType="vm:TunnelEditorViewModel"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:TunnelEditorViewModel />
+    </Design.DataContext>
+
+    <StackPanel Width="460" Spacing="8">
+        <!--  Validation error (set by the owner when "Save" is clicked with invalid input)  -->
+        <ui:FAInfoBar x:Name="ValidationInfo"
+                      IsClosable="False"
+                      IsOpen="False"
+                      IsVisible="False"
+                      Severity="Error" />
+
+        <TextBox PlaceholderText="{Binding NamePlaceholder}" Text="{Binding Name}" />
+
+        <TextBlock Classes="sectionHeader" Text="SSH server" />
+        <ComboBox HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="Terminal profile"
+                  IsEnabled="{Binding HasProfiles}"
+                  ItemsSource="{Binding Profiles}"
+                  PlaceholderText="Terminal profile"
+                  SelectedItem="{Binding Profile}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="models:SshSession">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Name}" />
+                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Address}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Classes="hint" Text="The tunnel connects with the profile's settings: password, keys, step-ca certificate and jump hosts. Changes to the profile apply to the tunnel as well." />
+
+        <TextBlock Classes="sectionHeader" Text="Forwarding" />
+        <ComboBox HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="Type"
+                  ItemsSource="{Binding Kinds}"
+                  SelectedItem="{Binding SelectedKind}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:TunnelKindOption">
+                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Grid ColumnDefinitions="72,*,110"
+              ColumnSpacing="8"
+              RowDefinitions="Auto,Auto"
+              RowSpacing="8">
+            <!--  Listeners bind (or request) 127.0.0.1: only the port is a choice  -->
+            <TextBlock VerticalAlignment="Center" Text="{Binding ListenPortLabel}" />
+            <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Classes="hint"
+                       Text="{Binding ListenPortHint}" />
+            <ui:FANumberBox Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="{Binding ListenPortLabel}"
+                            Maximum="65535"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Compact"
+                            ToolTip.Tip="{Binding ListenPortLabel}"
+                            Value="{Binding ListenPort}" />
+
+            <!--  Target: as seen from the SSH server (local) or from this computer (remote); none for SOCKS  -->
+            <TextBlock Grid.Row="1"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding HasTarget}"
+                       Text="Target" />
+            <TextBox Grid.Row="1"
+                     Grid.Column="1"
+                     AutomationProperties.Name="Target host"
+                     IsVisible="{Binding HasTarget}"
+                     PlaceholderText="Target host"
+                     Text="{Binding TargetHost}" />
+            <ui:FANumberBox Grid.Row="1"
+                            Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="Target port"
+                            IsVisible="{Binding HasTarget}"
+                            Maximum="65535"
+                            Minimum="1"
+                            SpinButtonPlacementMode="Compact"
+                            ToolTip.Tip="Target port"
+                            Value="{Binding TargetPort}" />
+        </Grid>
+        <TextBlock Classes="hint" Text="{Binding TargetHint}" />
+        <TextBlock Classes="hint"
+                   IsVisible="{Binding IsRemote}"
+                   Text="{x:Static vm:TunnelRow.RemoteBindNotice}" />
+    </StackPanel>
+</UserControl>

@@ -1,0 +1,172 @@
+﻿<UserControl x:Class="T.UI.Views.Dialogs.AboutDialog"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dialogs="using:T.UI.Views.Dialogs"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:DataType="dialogs:AboutDialog">
+
+    <ScrollViewer>
+        <StackPanel Margin="8" Spacing="16">
+            <!--  Header mit Logo  -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Image Width="80"
+                       Height="80"
+                       Source="avares://T/Assets/logo.png" />
+                <TextBlock HorizontalAlignment="Center"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           Text="T - SSH Terminal Client" />
+                <TextBlock HorizontalAlignment="Center"
+                           FontSize="14"
+                           Opacity="0.7"
+                           Text="{Binding Version}" />
+            </StackPanel>
+
+            <!--  Description  -->
+            <TextBlock Margin="20,0"
+                       Opacity="0.8"
+                       Text="A modern, cross-platform SSH terminal client built with Avalonia UI."
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+
+            <Separator />
+
+            <!--  License  -->
+            <StackPanel Spacing="8">
+                <TextBlock FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="License" />
+                <TextBlock Opacity="0.8" TextWrapping="Wrap">
+                    This project is licensed under the GNU General Public License v3.0.
+                    You are free to use, modify and distribute this software under the terms of the GPL.
+                </TextBlock>
+                <Button HorizontalAlignment="Left"
+                        Click="OnViewLicenseClick"
+                        Content="View Full License" />
+            </StackPanel>
+
+            <Separator />
+
+            <!--  Third-Party Libraries  -->
+            <StackPanel Spacing="8">
+                <TextBlock FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="Third-Party Libraries" />
+                <TextBlock Margin="0,0,0,8"
+                           Opacity="0.8"
+                           Text="This project uses the following open-source libraries:" />
+
+                <Border Padding="12"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                    <StackPanel Spacing="12">
+                        <!--  Avalonia  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="Avalonia UI Framework" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© The Avalonia Project" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  FluentAvalonia  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="FluentAvalonia UI" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© amwx" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  SSH.NET  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="SSH.NET" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© Renci" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  CommunityToolkit  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text=".NET Community Toolkit (MVVM)" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© .NET Foundation" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  Microsoft.Data.Sqlite  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="Microsoft.Data.Sqlite" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© Microsoft Corporation" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  Svg.Controls.Skia  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="Svg.Controls.Skia" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© wieslawsoltes" />
+                        </StackPanel>
+
+                        <Separator />
+
+                        <!--  Velopack  -->
+                        <StackPanel Spacing="4">
+                            <TextBlock FontWeight="SemiBold" Text="Velopack" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="License: MIT" />
+                            <TextBlock FontSize="12"
+                                       Opacity="0.7"
+                                       Text="© Caelan Sayler" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Margin="0,8,0,0"
+                           HorizontalAlignment="Center"
+                           FontSize="12"
+                           Opacity="0.6"
+                           Text="All third-party licenses are compatible with the GNU GPLv3 license of this project."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Separator />
+
+            <!--  Copyright  -->
+            <TextBlock HorizontalAlignment="Center"
+                       FontSize="12"
+                       Opacity="0.6"
+                       Text="© 2026 Yannick Dreher (yannick.dreher@dremaxx.de). Licensed under GPLv3." />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

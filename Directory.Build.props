@@ -1,0 +1,12 @@
+<Project>
+  <!-- Shared settings for all projects: nullable, analyzers and code style checks in the build. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Needed so IDE0005 (unnecessary usings) is reported by the build; missing XML docs are not an error. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+</Project>

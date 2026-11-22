@@ -1,0 +1,215 @@
+﻿name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  # Stable releases (tag without suffix, or "-stable") are only built from master. Beta and other
+  # channels may be tagged on any branch.
+  check-source:
+    name: Check release source
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Stable releases must be tagged on master
+      env:
+        TAG: ${{ github.event.release.tag_name }}
+      run: |
+        if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-stable)?$ ]]; then
+            echo "$TAG is not a stable release: no restriction."
+            exit 0
+        fi
+        git fetch origin master
+        if git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/master; then
+            echo "$TAG is on master."
+        else
+            echo "::error::$TAG is a stable release, but its commit is not on master. Merge develop into master and tag master."
+            exit 1
+        fi
+
+  publish-windows:
+    name: Publish Windows
+    needs: check-source
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    
+    - name: Extract version and channel from tag
+      id: version
+      shell: pwsh
+      run: |
+        $tag = "${{ github.event.release.tag_name }}"
+        # Tag format: v1.0.0-stable or v1.0.0-beta or v1.0.0
+        if ($tag -match '^v([0-9]+\.[0-9]+\.[0-9]+)(?:-(.+))?$') {
+            $version = $matches[1]
+            $suffix = $matches[2]
+            if ([string]::IsNullOrEmpty($suffix)) {
+                $suffix = "stable"
+            }
+            $channel = "win-x64-$suffix"
+            
+            echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+            echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+            echo "CHANNEL=$channel" >> $env:GITHUB_OUTPUT
+            echo "SUFFIX=$suffix" >> $env:GITHUB_OUTPUT
+            
+            Write-Host "Version: $version"
+            Write-Host "Channel: $channel"
+            Write-Host "Suffix: $suffix"
+        } else {
+            Write-Error "Tag format is invalid. Expected: v1.0.0-stable or v1.0.0-beta"
+            exit 1
+        }
+    
+    - name: Install Velopack
+      shell: pwsh
+      run: |
+        dotnet tool install -g vpk
+    
+    - name: Restore dependencies
+      shell: pwsh
+      run: |
+        dotnet restore T.UI/T.UI.csproj -r win-x64
+    
+    - name: Publish application
+      shell: pwsh
+      run: |
+        dotnet publish T.UI/T.UI.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained `
+          --no-restore `
+          -p:Version=${{ steps.version.outputs.VERSION }} `
+          -o publish/
+    
+    - name: Package with Velopack
+      shell: pwsh
+      run: |
+        vpk pack `
+          -u T `
+          -v ${{ steps.version.outputs.VERSION }} `
+          -p publish/ `
+          -e T.exe `
+          -i T.UI/Assets/logo.ico `
+          -o releases/ `
+          --packTitle "T" `
+          --packAuthors "The T Project Contributors" `
+          --channel ${{ steps.version.outputs.CHANNEL }}
+    
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        files: releases/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-linux:
+    name: Publish Linux
+    needs: check-source
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    
+    - name: Extract version and channel from tag
+      id: version
+      shell: bash
+      run: |
+        tag="${{ github.event.release.tag_name }}"
+        # Tag format: v1.0.0-stable or v1.0.0-beta or v1.0.0
+        if [[ $tag =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-(.+))?$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            suffix="${BASH_REMATCH[3]}"
+            if [ -z "$suffix" ]; then
+                suffix="stable"
+            fi
+            channel="linux-x64-$suffix"
+            
+            echo "VERSION=$version" >> $GITHUB_OUTPUT
+            echo "TAG=$tag" >> $GITHUB_OUTPUT
+            echo "CHANNEL=$channel" >> $GITHUB_OUTPUT
+            echo "SUFFIX=$suffix" >> $GITHUB_OUTPUT
+            
+            echo "Version: $version"
+            echo "Channel: $channel"
+            echo "Suffix: $suffix"
+        else
+            echo "Tag format is invalid. Expected: v1.0.0-stable or v1.0.0-beta"
+            exit 1
+        fi
+    
+    - name: Install Velopack
+      run: |
+        dotnet tool install -g vpk
+    
+    - name: Restore dependencies
+      run: |
+        dotnet restore T.UI/T.UI.csproj -r linux-x64
+    
+    - name: Publish application
+      run: |
+        dotnet publish T.UI/T.UI.csproj \
+          -c Release \
+          -r linux-x64 \
+          --self-contained \
+          --no-restore \
+          -p:Version=${{ steps.version.outputs.VERSION }} \
+          -o publish/
+    
+    - name: Package with Velopack
+      run: |
+        vpk pack \
+          -u T \
+          -v ${{ steps.version.outputs.VERSION }} \
+          -p publish/ \
+          -e T \
+          -i T.UI/Assets/logo.ico \
+          -o releases/ \
+          --packTitle "T" \
+          --packAuthors "The T Project Contributors" \
+          --channel ${{ steps.version.outputs.CHANNEL }}
+    
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        files: releases/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

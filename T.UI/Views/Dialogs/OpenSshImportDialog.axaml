@@ -1,0 +1,271 @@
+﻿<UserControl x:Class="T.UI.Views.Dialogs.OpenSshImportDialog"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:T.Models"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:T.UI.ViewModels"
+             x:DataType="vm:OpenSshImportDialogViewModel"
+             mc:Ignorable="d">
+
+    <Design.DataContext>
+        <vm:OpenSshImportDialogViewModel />
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.detail">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <!--  Small state label in the list (Blocked / Exists / Review)  -->
+        <Style Selector="Border.badge">
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}" />
+        </Style>
+        <Style Selector="Border.badge TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+        </Style>
+        <Style Selector="Border.badge.error">
+            <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
+        </Style>
+        <Style Selector="Border.badge.error TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Width="720"
+          RowDefinitions="Auto,Auto,400"
+          RowSpacing="10">
+        <!--  Validation error (set by the owner when "Import" is clicked)  -->
+        <ui:FAInfoBar x:Name="ValidationInfo"
+                      IsClosable="False"
+                      IsOpen="False"
+                      IsVisible="False"
+                      Severity="Error" />
+
+        <Grid Grid.Row="1"
+              ColumnDefinitions="Auto,*"
+              ColumnSpacing="10">
+            <TextBlock VerticalAlignment="Center" Text="Import into" />
+            <ComboBox Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Destination folder"
+                      ItemsSource="{Binding Destinations}"
+                      SelectedItem="{Binding Destination}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:OpenSshImportFolder">
+                        <TextBlock Text="{Binding Label}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+        </Grid>
+
+        <Grid Grid.Row="2"
+              ColumnDefinitions="240,*"
+              ColumnSpacing="14">
+
+            <!--  Hosts of the configuration  -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6">
+                <ListBox Margin="2"
+                         Background="Transparent"
+                         ItemsSource="{Binding Rows}"
+                         SelectedItem="{Binding SelectedRow}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OpenSshImportRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="2">
+                                <CheckBox MinWidth="0"
+                                          AutomationProperties.Name="{Binding Alias, StringFormat='Import {0}'}"
+                                          IsChecked="{Binding IsSelected}"
+                                          IsEnabled="{Binding CanSelect}" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding Alias}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Classes="detail" Text="{Binding Target.Address}" />
+                                </StackPanel>
+                                <Border Grid.Column="2"
+                                        Margin="4,0,0,0"
+                                        Classes="badge"
+                                        Classes.error="{Binding BadgeIsError}"
+                                        IsVisible="{Binding HasBadge}">
+                                    <TextBlock Text="{Binding Badge}" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!--  Details of the selected host  -->
+            <ScrollViewer Grid.Column="1">
+                <ContentControl Content="{Binding SelectedRow}">
+                    <ContentControl.ContentTemplate>
+                        <DataTemplate x:DataType="vm:OpenSshImportRow">
+                            <StackPanel Margin="0,0,12,0" Spacing="8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock FontSize="16"
+                                               FontWeight="SemiBold"
+                                               Text="{Binding Alias}" />
+                                    <TextBlock Classes="hint" Text="{Binding Defaults}" />
+                                    <TextBlock Classes="hint"
+                                               IsVisible="{Binding WasEdited}"
+                                               Text="Edited in this preview." />
+                                </StackPanel>
+
+                                <ui:FAInfoBar Title="Cannot be imported"
+                                              IsClosable="False"
+                                              IsOpen="{Binding IsBlocked}"
+                                              IsVisible="{Binding IsBlocked}"
+                                              Message="{Binding RouteError}"
+                                              Severity="Error" />
+                                <ui:FAInfoBar IsClosable="False"
+                                              IsOpen="{Binding NameCollision}"
+                                              IsVisible="{Binding NameCollision}"
+                                              Message="A profile with this name already exists in the folder. Rename it below to import it."
+                                              Severity="Warning" />
+                                <ui:FAInfoBar Title="Review required"
+                                              IsClosable="False"
+                                              IsOpen="{Binding RequiresReview}"
+                                              IsVisible="{Binding RequiresReview}"
+                                              Message="The configuration changes how host keys are checked. T always verifies host keys against known_hosts; check the settings below before importing."
+                                              Severity="Warning">
+                                    <ui:FAInfoBar.ActionButton>
+                                        <CheckBox Content="Settings reviewed" IsChecked="{Binding Reviewed}" />
+                                    </ui:FAInfoBar.ActionButton>
+                                </ui:FAInfoBar>
+
+                                <!--  Effective settings (editable)  -->
+                                <Grid ColumnDefinitions="72,*,Auto,90"
+                                      ColumnSpacing="8"
+                                      RowDefinitions="Auto,Auto,Auto,Auto"
+                                      RowSpacing="8">
+                                    <TextBlock Classes="fieldLabel" Text="Name" />
+                                    <TextBox Grid.Column="1"
+                                             Grid.ColumnSpan="3"
+                                             AutomationProperties.Name="Profile name"
+                                             Text="{Binding Target.Name}" />
+
+                                    <TextBlock Grid.Row="1"
+                                               Classes="fieldLabel"
+                                               Text="Host" />
+                                    <TextBox Grid.Row="1"
+                                             Grid.Column="1"
+                                             AutomationProperties.Name="Host"
+                                             PlaceholderText="Host name or IP address"
+                                             Text="{Binding Target.Host}" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="2"
+                                               Classes="fieldLabel"
+                                               Text="Port" />
+                                    <ui:FANumberBox Grid.Row="1"
+                                                    Grid.Column="3"
+                                                    HorizontalAlignment="Stretch"
+                                                    AutomationProperties.Name="Port"
+                                                    Maximum="65535"
+                                                    Minimum="1"
+                                                    SpinButtonPlacementMode="Hidden"
+                                                    Value="{Binding Target.Port}" />
+
+                                    <TextBlock Grid.Row="2"
+                                               Classes="fieldLabel"
+                                               Text="User" />
+                                    <TextBox Grid.Row="2"
+                                             Grid.Column="1"
+                                             Grid.ColumnSpan="3"
+                                             AutomationProperties.Name="User name"
+                                             Text="{Binding Target.Username}" />
+
+                                    <TextBlock Grid.Row="3"
+                                               Classes="fieldLabel"
+                                               Text="Key file" />
+                                    <TextBox Grid.Row="3"
+                                             Grid.Column="1"
+                                             Grid.ColumnSpan="3"
+                                             AutomationProperties.Name="Identity file"
+                                             PlaceholderText="Absolute path (empty: default keys)"
+                                             Text="{Binding Target.PrivateKeyPath}" />
+                                </Grid>
+
+                                <ui:FAInfoBar Title="Notes"
+                                              IsClosable="False"
+                                              IsOpen="{Binding HasWarnings}"
+                                              IsVisible="{Binding HasWarnings}"
+                                              Message="{Binding Warnings}"
+                                              Severity="Informational" />
+
+                                <Expander HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          Header="Jump hosts (created as separate profiles)"
+                                          IsVisible="{Binding HasJumpHosts}">
+                                    <ItemsControl ItemsSource="{Binding JumpHosts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:SshSession">
+                                                <Grid Margin="0,0,0,10"
+                                                      ColumnDefinitions="72,*,Auto,90"
+                                                      ColumnSpacing="8"
+                                                      RowDefinitions="Auto,Auto,Auto,Auto"
+                                                      RowSpacing="8">
+                                                    <TextBlock Grid.ColumnSpan="4"
+                                                               FontWeight="SemiBold"
+                                                               Text="{Binding Name}" />
+                                                    <TextBlock Grid.Row="1"
+                                                               Classes="fieldLabel"
+                                                               Text="Host" />
+                                                    <TextBox Grid.Row="1"
+                                                             Grid.Column="1"
+                                                             AutomationProperties.Name="Jump host"
+                                                             Text="{Binding Host}" />
+                                                    <TextBlock Grid.Row="1"
+                                                               Grid.Column="2"
+                                                               Classes="fieldLabel"
+                                                               Text="Port" />
+                                                    <ui:FANumberBox Grid.Row="1"
+                                                                    Grid.Column="3"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    AutomationProperties.Name="Jump host port"
+                                                                    Maximum="65535"
+                                                                    Minimum="1"
+                                                                    SpinButtonPlacementMode="Hidden"
+                                                                    Value="{Binding Port}" />
+                                                    <TextBlock Grid.Row="2"
+                                                               Classes="fieldLabel"
+                                                               Text="User" />
+                                                    <TextBox Grid.Row="2"
+                                                             Grid.Column="1"
+                                                             Grid.ColumnSpan="3"
+                                                             AutomationProperties.Name="Jump host user"
+                                                             Text="{Binding Username}" />
+                                                    <TextBlock Grid.Row="3"
+                                                               Classes="fieldLabel"
+                                                               Text="Key file" />
+                                                    <TextBox Grid.Row="3"
+                                                             Grid.Column="1"
+                                                             Grid.ColumnSpan="3"
+                                                             AutomationProperties.Name="Jump host identity file"
+                                                             PlaceholderText="Absolute path (empty: default keys)"
+                                                             Text="{Binding PrivateKeyPath}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                </ContentControl>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>
