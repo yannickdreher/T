@@ -3,7 +3,7 @@ using T.Models;
 namespace T.Abstractions;
 
 /// <summary>
-/// Saved local port forwardings. Each rule refers to the terminal profile it connects through
+/// Saved port forwardings (local, remote and dynamic). Each rule refers to the terminal profile it connects through
 /// (<see cref="TunnelRule.SessionId"/>); deleting the profile deletes its rules.
 /// </summary>
 public interface ITunnelStore

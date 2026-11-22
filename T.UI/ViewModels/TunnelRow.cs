@@ -21,8 +21,35 @@ public partial class TunnelRow(TunnelRule rule, SshSession profile) : Observable
     public TunnelRule Rule { get; } = rule;
     public SshSession Profile { get; } = profile;
 
-    /// <summary>"127.0.0.1:8080 → db.internal:5432"</summary>
-    public string Route => $"{Rule.LocalEndpoint} → {Rule.TargetEndpoint}";
+    /// <summary>
+    /// What the user has to know before a remote tunnel starts: the client can only request the
+    /// server's loopback address.
+    /// </summary>
+    public const string RemoteBindNotice =
+        "The tunnel asks the server to listen on its loopback address only. A server configured with " +
+        "\"GatewayPorts yes\" may listen on all its addresses instead, which makes the port reachable " +
+        "from the server's network.";
+
+    /// <summary>"127.0.0.1:8080 → db.internal:5432"; see <see cref="TunnelRule.Route"/>.</summary>
+    public string Route => Rule.Route;
+
+    /// <summary>The type in the list: "Local", "Remote" or "SOCKS".</summary>
+    public string KindText => Rule.Kind switch
+    {
+        TunnelKind.Remote => "Remote",
+        TunnelKind.Dynamic => "SOCKS",
+        _ => "Local"
+    };
+
+    /// <summary>The type with its direction, as tooltip and in the details.</summary>
+    public string KindDescription => Rule.Kind switch
+    {
+        TunnelKind.Remote => "Remote forwarding: the server listens, the target is reached from this computer",
+        TunnelKind.Dynamic => "Dynamic forwarding: SOCKS proxy on this computer, targets are reached from the server",
+        _ => "Local forwarding: this computer listens, the target is reached from the server"
+    };
+
+    public bool IsRemote => Rule.Kind == TunnelKind.Remote;
 
     public TunnelState State => Status.State;
     public bool IsRunning => State is TunnelState.Starting or TunnelState.Active or TunnelState.Stopping;

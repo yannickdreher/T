@@ -1,6 +1,5 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
-using T.Models;
 
 namespace T.Services;
 
@@ -31,26 +30,8 @@ public partial class SqliteSessionStorageService
             command.ExecuteNonQuery();
         }
 
-        Execute(connection, "UPDATE LocalTunnels SET StartOnConnect = 0;");
-    }
-
-    /// <summary>All tunnel rules, each referring to the terminal profile it connects through.</summary>
-    public async Task<List<TunnelRule>> LoadAllTunnelsAsync()
-    {
-        var rules = new List<TunnelRule>();
-        await using var connection = CreateConnection();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT Id, SessionId, Name, LocalPort, TargetHost, TargetPort, StartOnConnect
-            FROM LocalTunnels ORDER BY Name COLLATE NOCASE, Id;
-            """;
-
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            rules.Add(new TunnelRule(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), reader.GetString(4), reader.GetInt32(5), reader.GetBoolean(6)));
-        }
-        return rules;
+        // Databases older than version 6 have no tunnels yet.
+        if (TableExists(connection, "LocalTunnels"))
+            Execute(connection, "UPDATE LocalTunnels SET StartOnConnect = 0;");
     }
 }

@@ -21,7 +21,7 @@
                       IsVisible="False"
                       Severity="Error" />
 
-        <TextBox PlaceholderText="Name (defaults to the target)" Text="{Binding Name}" />
+        <TextBox PlaceholderText="{Binding NamePlaceholder}" Text="{Binding Name}" />
 
         <TextBlock Classes="sectionHeader" Text="SSH server" />
         <ComboBox HorizontalAlignment="Stretch"
@@ -42,44 +42,60 @@
         <TextBlock Classes="hint" Text="The tunnel connects with the profile's settings: password, keys, step-ca certificate and jump hosts. Changes to the profile apply to the tunnel as well." />
 
         <TextBlock Classes="sectionHeader" Text="Forwarding" />
+        <ComboBox HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="Type"
+                  ItemsSource="{Binding Kinds}"
+                  SelectedItem="{Binding SelectedKind}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:TunnelKindOption">
+                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
         <Grid ColumnDefinitions="72,*,110"
               ColumnSpacing="8"
               RowDefinitions="Auto,Auto"
               RowSpacing="8">
-            <!--  The listener always binds to 127.0.0.1: only the port is a choice  -->
-            <TextBlock VerticalAlignment="Center" Text="Local port" />
+            <!--  Listeners bind (or request) 127.0.0.1: only the port is a choice  -->
+            <TextBlock VerticalAlignment="Center" Text="{Binding ListenPortLabel}" />
             <TextBlock Grid.Column="1"
                        VerticalAlignment="Center"
                        Classes="hint"
-                       Text="on this computer only (127.0.0.1)" />
+                       Text="{Binding ListenPortHint}" />
             <ui:FANumberBox Grid.Column="2"
                             HorizontalAlignment="Stretch"
-                            AutomationProperties.Name="Local port"
+                            AutomationProperties.Name="{Binding ListenPortLabel}"
                             Maximum="65535"
                             Minimum="1"
                             SpinButtonPlacementMode="Compact"
-                            ToolTip.Tip="Local port"
-                            Value="{Binding LocalPort}" />
+                            ToolTip.Tip="{Binding ListenPortLabel}"
+                            Value="{Binding ListenPort}" />
 
-            <!--  Target: as seen from the SSH server  -->
+            <!--  Target: as seen from the SSH server (local) or from this computer (remote); none for SOCKS  -->
             <TextBlock Grid.Row="1"
                        VerticalAlignment="Center"
+                       IsVisible="{Binding HasTarget}"
                        Text="Target" />
             <TextBox Grid.Row="1"
                      Grid.Column="1"
                      AutomationProperties.Name="Target host"
+                     IsVisible="{Binding HasTarget}"
                      PlaceholderText="Target host"
                      Text="{Binding TargetHost}" />
             <ui:FANumberBox Grid.Row="1"
                             Grid.Column="2"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="Target port"
+                            IsVisible="{Binding HasTarget}"
                             Maximum="65535"
                             Minimum="1"
                             SpinButtonPlacementMode="Compact"
                             ToolTip.Tip="Target port"
                             Value="{Binding TargetPort}" />
         </Grid>
-        <TextBlock Classes="hint" Text="The target is resolved by the SSH server: localhost is the server itself." />
+        <TextBlock Classes="hint" Text="{Binding TargetHint}" />
+        <TextBlock Classes="hint"
+                   IsVisible="{Binding IsRemote}"
+                   Text="{x:Static vm:TunnelRow.RemoteBindNotice}" />
     </StackPanel>
 </UserControl>

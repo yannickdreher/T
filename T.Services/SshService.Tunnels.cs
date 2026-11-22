@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using Renci.SshNet;
 using Renci.SshNet.Common;
@@ -72,19 +73,37 @@ public sealed partial class SshService
                     return;
                 }
 
-                // The relay owns the user's port and counts the traffic; SSH.NET listens behind it.
-                int innerPort = TunnelRelay.FindFreeLoopbackPort();
-                var relay = new TunnelRelay(rule.LocalPort, innerPort);
-                tunnel.Relay = relay;
-                relay.Start();
-
-                var listener = new TunnelPort(rule, innerPort);
-                tunnel.Listener = listener;
-                tunnel.ErrorHandler = (_, e) =>
+                void ReportForwardingError(string message)
                 {
-                    if (tunnel.ReportForwardingError(e.Exception.Message))
+                    if (tunnel.ReportForwardingError(message))
                         NotifyTunnelsChanged(connection);
-                };
+                }
+
+                ForwardedPort listener;
+                if (rule.Kind == TunnelKind.Remote)
+                {
+                    // SSH.NET hands the connections from the server to the relay on an internal port.
+                    // The relay connects to the target (resolving its name here) and counts the traffic.
+                    var relay = new TunnelRelay(0, rule.TargetHost, rule.TargetPort);
+                    tunnel.Relay = relay;
+                    relay.TargetConnectFailed += ex => ReportForwardingError($"{rule.TargetEndpoint}: {ex.Message}");
+                    relay.Start();
+                    listener = new RemoteTunnelPort(rule, relay.Port);
+                }
+                else
+                {
+                    // The relay owns the user's port and counts the traffic; SSH.NET listens behind it.
+                    int innerPort = TunnelRelay.FindFreeLoopbackPort();
+                    var relay = new TunnelRelay(rule.ListenPort, innerPort);
+                    tunnel.Relay = relay;
+                    relay.Start();
+                    listener = rule.Kind == TunnelKind.Dynamic
+                        ? new DynamicTunnelPort(innerPort)
+                        : new LocalTunnelPort(rule, innerPort);
+                }
+
+                tunnel.Listener = listener;
+                tunnel.ErrorHandler = (_, e) => ReportForwardingError(e.Exception.Message);
                 listener.Exception += tunnel.ErrorHandler;
                 connection.Ssh.AddForwardedPort(listener);
                 listener.Start();
@@ -99,9 +118,7 @@ public sealed partial class SshService
             catch (Exception ex)
             {
                 tunnel.Release(connection.Ssh);
-                var message = ex is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse }
-                    ? $"Local port {rule.LocalEndpoint} is already in use."
-                    : ex.Message;
+                var message = DescribeTunnelStartError(rule, ex);
                 tunnel.SetStatus(new TunnelStatus(TunnelState.Failed, message));
             }
 
@@ -123,6 +140,19 @@ public sealed partial class SshService
             NotifyTunnelsChanged(connection);
         }
         finally { connection.TunnelGate.Release(); }
+    }
+
+    /// <summary>What the user sees when the listener of a tunnel could not be started.</summary>
+    internal static string DescribeTunnelStartError(TunnelRule rule, Exception ex)
+    {
+        if (ex is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } && rule.Kind != TunnelKind.Remote)
+            return $"Local port {rule.ListenEndpoint} is already in use.";
+
+        // SSH.NET reports a rejected "tcpip-forward" request without the server's reason.
+        if (rule.Kind == TunnelKind.Remote && ex.GetType() == typeof(SshException))
+            return $"The server did not open port {rule.ListenEndpoint}: it may be in use there, or the server does not allow remote forwarding.";
+
+        return ex.Message;
     }
 
     private bool IsCurrentTunnelConnection(Connection connection) =>
@@ -157,7 +187,7 @@ public sealed partial class SshService
         private readonly Lock _statusLock = new();
         private TunnelStatus _status = new(TunnelState.Starting);
 
-        public TunnelPort? Listener { get; set; }
+        public ForwardedPort? Listener { get; set; }
         public TunnelRelay? Relay { get; set; }
         public TunnelStatistics Statistics => Relay?.Statistics ?? default;
         public EventHandler<ExceptionEventArgs>? ErrorHandler { get; set; }
@@ -186,7 +216,7 @@ public sealed partial class SshService
 
         public void Release(SshClient ssh)
         {
-            // First the user's port and the open client connections, then the SSH listener behind them.
+            // First the relay with its port and the open connections, then the SSH listener.
             if (Relay is { } relay)
             {
                 Relay = null;
@@ -207,11 +237,30 @@ public sealed partial class SshService
     }
 
     /// <summary>SSH.NET's forwarding listener on an internal loopback port behind the <see cref="TunnelRelay"/>.</summary>
-    private sealed class TunnelPort(TunnelRule rule, int innerPort)
+    private sealed class LocalTunnelPort(TunnelRule rule, int innerPort)
         : ForwardedPortLocal(TunnelRule.BindAddress, (uint)innerPort, rule.TargetHost, (uint)rule.TargetPort)
     {
         // ForwardedPort.Start registers an additional error handler before binding the socket.
         // StartPort registers the local listener's handlers after binding succeeds.
+        public override void Start() => StartPort();
+    }
+
+    /// <summary>SSH.NET's SOCKS listener on an internal loopback port behind the <see cref="TunnelRelay"/>.</summary>
+    private sealed class DynamicTunnelPort(int innerPort) : ForwardedPortDynamic(TunnelRule.BindAddress, (uint)innerPort)
+    {
+        // See LocalTunnelPort.
+        public override void Start() => StartPort();
+    }
+
+    /// <summary>
+    /// Asks the server to listen on its loopback address and delivers the connections to the
+    /// <see cref="TunnelRelay"/> on <paramref name="relayPort"/>. SSH.NET takes the target as an IP
+    /// address only; the relay behind it accepts host names.
+    /// </summary>
+    private sealed class RemoteTunnelPort(TunnelRule rule, int relayPort)
+        : ForwardedPortRemote(IPAddress.Parse(TunnelRule.BindAddress), (uint)rule.ListenPort, IPAddress.Loopback, (uint)relayPort)
+    {
+        // See LocalTunnelPort: a rejected request must not leave a handler on the session.
         public override void Start() => StartPort();
     }
 }

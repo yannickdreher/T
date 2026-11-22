@@ -20,7 +20,7 @@ using T.UI.Views.Dialogs;
 namespace T.UI.ViewModels;
 
 /// <summary>
-/// The tunnels pane: saved local port forwardings. Each tunnel connects through a terminal profile
+/// The tunnels pane: saved port forwardings (local, remote and dynamic). Each tunnel connects through a terminal profile
 /// (credentials, keys, step-ca and jump hosts come from there) with its own SSH connection,
 /// independent of terminal tabs. Tunnels connect and disconnect individually.
 /// </summary>
@@ -57,13 +57,14 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     public TunnelsWorkspaceViewModel()
     {
         var host = new SshSession { Name = "bastion", Host = "bastion.example.com", Username = "admin" };
-        TunnelRow Row(string name, int local, string target, int port, TunnelStatus status) =>
-            new(new TunnelRule(name, host.Id, name, local, target, port, false), host) { Status = status };
+        TunnelRow Row(string name, TunnelKind kind, int listen, string target, int port, TunnelStatus status) =>
+            new(new TunnelRule(name, host.Id, name, kind, listen, target, port, false), host) { Status = status };
 
-        Tunnels.Add(Row("PostgreSQL", 5432, "db.internal", 5432, new(TunnelState.Active)));
-        Tunnels.Add(Row("Grafana", 3000, "localhost", 3000, new(TunnelState.Starting)));
-        Tunnels.Add(Row("Redis", 6379, "cache.internal", 6379, new(TunnelState.Failed, "Local port 6379 is already in use.")));
-        Tunnels.Add(Row("Admin UI", 8443, "10.0.0.12", 443, default));
+        Tunnels.Add(Row("PostgreSQL", TunnelKind.Local, 5432, "db.internal", 5432, new(TunnelState.Active)));
+        Tunnels.Add(Row("Grafana", TunnelKind.Local, 3000, "localhost", 3000, new(TunnelState.Starting)));
+        Tunnels.Add(Row("Redis", TunnelKind.Local, 6379, "cache.internal", 6379, new(TunnelState.Failed, "Local port 127.0.0.1:6379 is already in use.")));
+        Tunnels.Add(Row("Dev server", TunnelKind.Remote, 8080, "localhost", 5173, default));
+        Tunnels.Add(Row("SOCKS 1080", TunnelKind.Dynamic, 1080, "", 0, default));
 
         // Five minutes of traffic for the active one.
         var now = DateTimeOffset.Now;
@@ -278,6 +279,7 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
     private async Task ConnectAsync(TunnelRow row)
     {
         if (_services is null || _connections.ContainsKey(row.Rule.Id)) return;
+        if (row.IsRemote && !await ConfirmRemoteBindAsync(row)) return;
 
         var vm = ActivatorUtilities.CreateInstance<SessionViewModel>(_services, row.Profile);
         var transport = vm.CreateTunnelTransport();
@@ -320,6 +322,22 @@ public sealed partial class TunnelsWorkspaceViewModel : ViewModelBase, IDisposab
             Release(row);
             SetStatus(row, new(TunnelState.Failed, ex.Message));
         }
+    }
+
+    /// <summary>
+    /// The client cannot see which address the server binds, so the user is told before the listener
+    /// is requested. Without a window there is nobody to tell and the tunnel does not start.
+    /// </summary>
+    private async Task<bool> ConfirmRemoteBindAsync(TunnelRow row)
+    {
+        if (Host is not { } owner) return false;
+        bool confirmed = await DialogService.ConfirmAsync(owner, "Connect remote tunnel",
+            $"\"{row.Rule.Name}\" opens port {row.Rule.ListenPort} on {row.Profile.Name} for {row.Rule.TargetEndpoint}, " +
+            $"as seen from this computer.\n\n{TunnelRow.RemoteBindNotice}",
+            primaryText: "Connect");
+
+        // The dialog was open for a while: the tunnel may have been started, edited or deleted meanwhile.
+        return confirmed && !row.IsRunning && !_connections.ContainsKey(row.Rule.Id) && Tunnels.Contains(row);
     }
 
     private async Task DisconnectAsync(TunnelRow row)

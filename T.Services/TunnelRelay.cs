@@ -7,17 +7,22 @@ using T.Models;
 namespace T.Services;
 
 /// <summary>
-/// Local side of a tunnel: listens on 127.0.0.1:<c>localPort</c> and relays every connection to
-/// <c>127.0.0.1:innerPort</c> (where SSH.NET's forwarded port listens), counting the bytes in both
-/// directions. SSH.NET does not report traffic, and the relay also makes it possible to close open
-/// forwarded connections when the tunnel stops.
+/// Client side of a tunnel: listens on a loopback port and relays every connection to a target,
+/// counting the bytes in both directions. SSH.NET does not report traffic, and the relay also makes
+/// it possible to close open forwarded connections when the tunnel stops.
+/// <para>
+/// Local and dynamic rules: the relay owns the user's port and forwards to SSH.NET's listener on an
+/// internal loopback port. Remote rules: SSH.NET delivers the connections from the server to the
+/// relay's internal port, and the relay connects to the target on the client side.
+/// </para>
 /// </summary>
 internal sealed class TunnelRelay : IDisposable
 {
     private const int BufferSize = 64 * 1024;
 
     private readonly TcpListener _listener;
-    private readonly int _innerPort;
+    private readonly string _targetHost;
+    private readonly int _targetPort;
     private readonly CancellationTokenSource _stop = new();
     private readonly ConcurrentDictionary<int, (TcpClient Client, TcpClient Inner)> _open = new();
     private long _received;
@@ -28,14 +33,28 @@ internal sealed class TunnelRelay : IDisposable
 
     /// <param name="localPort">The port users connect to (loopback only).</param>
     /// <param name="innerPort">The port of the SSH forwarding listener (loopback only).</param>
-    public TunnelRelay(int localPort, int innerPort)
+    public TunnelRelay(int localPort, int innerPort) : this(localPort, IPAddress.Loopback.ToString(), innerPort)
     {
-        _innerPort = innerPort;
-        _listener = new TcpListener(IPAddress.Loopback, localPort);
+    }
+
+    /// <param name="listenPort">The loopback port to listen on; 0 chooses a free one (see <see cref="Port"/>).</param>
+    /// <param name="targetHost">Host name or IP address the connections are relayed to (resolved per connection).</param>
+    /// <param name="targetPort">The port of the target.</param>
+    public TunnelRelay(int listenPort, string targetHost, int targetPort)
+    {
+        _targetHost = targetHost;
+        _targetPort = targetPort;
+        _listener = new TcpListener(IPAddress.Loopback, listenPort);
         _listener.Server.ExclusiveAddressUse = true;
     }
 
-    /// <summary>Binds the local port (throws a <see cref="SocketException"/> when it is in use) and starts accepting.</summary>
+    /// <summary>The target refused a connection or could not be reached (raised on a worker thread).</summary>
+    public event Action<Exception>? TargetConnectFailed;
+
+    /// <summary>The port the relay listens on (known after <see cref="Start"/>).</summary>
+    public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+    /// <summary>Binds the listening port (throws a <see cref="SocketException"/> when it is in use) and starts accepting.</summary>
     public void Start()
     {
         _listener.Start();
@@ -76,7 +95,15 @@ internal sealed class TunnelRelay : IDisposable
         {
             client.NoDelay = true;
             inner.NoDelay = true;
-            await inner.ConnectAsync(IPAddress.Loopback, _innerPort, token);
+            try
+            {
+                await inner.ConnectAsync(_targetHost, _targetPort, token);
+            }
+            catch (SocketException ex)
+            {
+                TargetConnectFailed?.Invoke(ex);
+                throw;
+            }
             _open[id] = (client, inner);
             Interlocked.Increment(ref _total);
 
