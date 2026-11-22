@@ -80,14 +80,8 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     /// <summary>The session is on screen (its pane is shown and the terminals are not hidden behind the tunnels).</summary>
     [ObservableProperty] private bool _isVisibleInLayout;
 
-    /// <summary>The session is one of several panes: it gets its own frame, and the active one is marked.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsActivePane))]
-    private bool _isSplitPane;
-
-    public bool IsActivePane => IsSplitPane && IsActive;
-
-    partial void OnIsActiveChanged(bool value) => OnPropertyChanged(nameof(IsActivePane));
+    /// <summary>The session is one of several panes (narrower, framed by the pane view).</summary>
+    [ObservableProperty] private bool _isSplitPane;
 
     partial void OnIsVisibleInLayoutChanged(bool value) => UpdateSystemMonitorVisibility();
 

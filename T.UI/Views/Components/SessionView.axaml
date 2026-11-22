@@ -25,18 +25,14 @@
             <Setter Property="BorderThickness" Value="1,0,1,1" />
             <Setter Property="CornerRadius" Value="0,4,4,4" />
         </Style>
-        <!--  One of several panes: a card of its own; the active one (keyboard input, selected tab) is marked  -->
+        <!--  One of several panes: SessionPanesView draws the frame (Border.pane)  -->
         <Style Selector="Border.sessionSurface.split">
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="4" />
-        </Style>
-        <Style Selector="Border.sessionSurface.activePane">
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
         </Style>
     </UserControl.Styles>
 
     <Border Classes="sessionSurface"
-            Classes.activePane="{Binding IsActivePane}"
             Classes.split="{Binding IsSplitPane}"
             ClipToBounds="True">
         <Grid RowDefinitions="*,Auto">

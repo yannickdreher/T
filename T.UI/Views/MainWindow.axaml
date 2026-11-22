@@ -116,7 +116,11 @@
                                   TabWidthMode="Equal">
                         <ui:FATabView.TabItemTemplate>
                             <DataTemplate x:DataType="vm:SessionViewModel">
-                                <ui:FATabViewItem ToolTip.Tip="{Binding Session.Address}">
+                                <!--
+                                    Content is null on purpose: without it the tab view shows the session itself as
+                                    the tab's content, which resolves to the SessionView that already sits in a pane.
+                                -->
+                                <ui:FATabViewItem Content="{x:Null}" ToolTip.Tip="{Binding Session.Address}">
                                     <ui:FATabViewItem.Header>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Ellipse Classes="status"
@@ -185,17 +189,11 @@
                         </ui:FATabView.TabStripFooter>
                     </ui:FATabView>
 
-                    <!--
-                        Split layouts: the panes are cards on the session surface, which continues the
-                        selected tab like the single session does.
-                    -->
-                    <Border Grid.Row="1"
-                            Classes="paneSurface"
-                            Classes.split="{Binding SessionsTree.IsSplit}">
-                        <components:SessionPanesView ActivateCommand="{Binding SessionsTree.ActivateSessionCommand}"
-                                                     Layout="{Binding SessionsTree.Layout}"
-                                                     Panes="{Binding SessionsTree.Panes}" />
-                    </Border>
+                    <components:SessionPanesView Grid.Row="1"
+                                                 ActivateCommand="{Binding SessionsTree.ActivateSessionCommand}"
+                                                 ActiveSession="{Binding SessionsTree.ActiveSession}"
+                                                 Layout="{Binding SessionsTree.Layout}"
+                                                 Panes="{Binding SessionsTree.Panes}" />
                 </Grid>
 
                 <!--  Welcome screen (no session open)  -->

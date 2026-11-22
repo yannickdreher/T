@@ -22,6 +22,12 @@
     <!--  Same radius as the panes (sidebar, session surface) instead of the larger flyout radius  -->
     <Style Selector="ui|FATabViewItem">
         <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <!--
+            The height of a selected tab: 32px and 1px margin below it. The first tab has no such margin
+            (see below); without a fixed height the strip would be 1px lower while it is selected, and
+            everything under the strip would move when the selection changes.
+        -->
+        <Setter Property="MinHeight" Value="33" />
     </Style>
 
     <!--
@@ -88,13 +94,18 @@
         </Style>
     </Style>
 
-    <!--  Surface of a split layout: continues the selected tab; the panes lie on it as cards  -->
-    <Style Selector="Border.paneSurface.split">
-        <Setter Property="Padding" Value="4" />
+    <!--
+        Pane of a split layout (SessionPanesView): the frames of neighbours overlap, so one line divides
+        them; the active pane is drawn on top with its frame in the accent colour.
+    -->
+    <Style Selector="Border.pane">
         <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource TabViewBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1,0,1,1" />
-        <Setter Property="CornerRadius" Value="0,4,4,4" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.pane.activePane">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
     </Style>
 
     <!--
