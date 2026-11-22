@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FluentAvalonia.UI.Controls;
 using T.Abstractions;
 using T.Services;
 
@@ -34,6 +35,9 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan SampleTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HistoryLength = TimeSpan.FromMinutes(5);
+    // The remote script waits up to LinuxProcessControl.ExitWaitMilliseconds for the process to exit.
+    private static readonly TimeSpan EndProcessTimeout = TimeSpan.FromSeconds(8);
+    private const int MaxProbeAttempts = 3;
     private static readonly MonitorMetric EmptyMetric = new(Unknown, []);
 
     private readonly SemaphoreSlim _commands = new(1);
@@ -87,10 +91,36 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _processFilter = "";
     [ObservableProperty] private string _processSummary = "No process data";
     [ObservableProperty] private IReadOnlyList<MonitorProcessRow> _processes = [];
-    [ObservableProperty] private MonitorProcessRow? _selectedProcess;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(EndProcessCommand))]
+    private MonitorProcessRow? _selectedProcess;
     [ObservableProperty] private string _commandLine = "";
 
+    // Null until the host has answered the capability probe of this connection.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EndProcessToolTip))]
+    [NotifyCanExecuteChangedFor(nameof(EndProcessCommand))]
+    private ProcessSignalSupport? _signalSupport;
+    [ObservableProperty] private bool _isEndProcessNoticeOpen;
+    [ObservableProperty] private string _endProcessNotice = "";
+    [ObservableProperty] private FAInfoBarSeverity _endProcessSeverity;
+
     private ISshService? _sshService;
+    private int _probeAttempts;
+
+    /// <summary>Asks the user (title, message) before a signal is sent. Without it nothing is sent.</summary>
+    public Func<string, string, Task<bool>>? ConfirmEndProcess { get; set; }
+
+    /// <summary>Names the action, or says why it is not offered on this host.</summary>
+    public string EndProcessToolTip => SignalSupport switch
+    {
+        ProcessSignalSupport.Supported => "End process (SIGTERM)…",
+        ProcessSignalSupport.NoPython => "End process is unavailable: python3 was not found on this host",
+        ProcessSignalSupport.PythonTooOld => "End process is unavailable: the host's python3 has no pidfd support (Python 3.9 or newer is required)",
+        ProcessSignalSupport.PidfdUnavailable => "End process is unavailable: the host's kernel or security policy does not allow pidfd signals (Linux 5.3 or newer is required)",
+        ProcessSignalSupport.Unknown => "End process is unavailable: the host did not answer the capability check. Refresh to try again",
+        _ => "End process is unavailable until the host has answered the capability check"
+    };
 
     public void LoadDesignTimeData()
     {
@@ -125,6 +155,7 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
             new(new RemoteProcess(733, 1, "sshd", "root", "S", 0, 7_400_000), null),
         ];
         ProcessSummary = "4 processes";
+        SignalSupport = ProcessSignalSupport.Supported;
     }
 
     public void SetVisibility(bool activeTab, bool activeDashboard)
@@ -158,6 +189,7 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         Cpu = Memory = Disk = Network = EmptyMetric;
         LastSample = Unknown;
         Status = IsPaused ? "Paused" : "Waiting for host data…";
+        IsEndProcessNoticeOpen = false;
         _connectionCts = new CancellationTokenSource();
         ResetDashboardSampling();
         _ = PollLoopAsync(sshService, _connectionCts.Token);
@@ -166,6 +198,9 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
     public void Stop()
     {
         _sshService = null;
+        // The next connection may reach another host or another Python: probe again.
+        SignalSupport = null;
+        _probeAttempts = 0;
         Cancel(ref _connectionCts);
         Cancel(ref _dashboardCts);
         Cancel(ref _detailsCts);
@@ -205,9 +240,102 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
     private void Refresh()
     {
         if (!_activeDashboard || _sshService is null) return;
+        if (SignalSupport == ProcessSignalSupport.Unknown)
+        {
+            SignalSupport = null;
+            _probeAttempts = 0;
+        }
         _refreshRequested = true;
         Wake();
     }
+
+    private bool CanEndProcess() =>
+        SelectedProcess is not null && SignalSupport == ProcessSignalSupport.Supported && _sshService is not null;
+
+    // The command is disabled while it runs, so a second click cannot send a second signal.
+    [RelayCommand(CanExecute = nameof(CanEndProcess))]
+    private async Task EndProcessAsync()
+    {
+        if (SelectedProcess?.Process is not { } process || _sshService is not { } service ||
+            _connectionCts is not { } connection || ConfirmEndProcess is not { } confirm)
+            return;
+
+        var token = connection.Token;
+        string label = $"\"{process.Name}\" (PID {process.Pid})";
+        if (!await confirm("End process",
+                $"Send SIGTERM to {label} on {TargetHost}?\n\n" +
+                "The process is asked to exit and may discard unsaved work. " +
+                "The signal is only sent if the PID still belongs to this process."))
+            return;
+
+        ShowEndProcessNotice(FAInfoBarSeverity.Informational, $"Sending SIGTERM to {label}…");
+        try
+        {
+            // The process that was confirmed is signalled, even if the selection moved on meanwhile.
+            var result = await ReadAsync(service, LinuxProcessControl.EndCommand(process.Pid, process.StartTime),
+                4096, token, EndProcessTimeout);
+            var outcome = LinuxProcessControl.ParseEnd(result);
+            // After a timeout the signal may have been sent: look once, never send again.
+            RemoteProcessState? state = outcome == EndProcessOutcome.TimedOut
+                ? LinuxProcessControl.ParseState(
+                    await ReadAsync(service, LinuxProcessControl.StateCommand(process.Pid), 4096, token), process)
+                : null;
+            var (severity, message) = DescribeEndProcess(outcome, state, label, process.Pid);
+            ShowEndProcessNotice(severity, message);
+            if (outcome == EndProcessOutcome.Unsupported && ReferenceEquals(service, _sshService))
+            {
+                SignalSupport = null;
+                _probeAttempts = 0;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowEndProcessNotice(FAInfoBarSeverity.Warning,
+                $"The connection closed before the host answered. SIGTERM may or may not have reached {label}.");
+        }
+
+        if (!_activeDashboard || !ReferenceEquals(service, _sshService)) return;
+        _refreshRequested = true;
+        Wake();
+    }
+
+    private void ShowEndProcessNotice(FAInfoBarSeverity severity, string message)
+    {
+        EndProcessSeverity = severity;
+        EndProcessNotice = message;
+        IsEndProcessNoticeOpen = true;
+    }
+
+    private static (FAInfoBarSeverity Severity, string Message) DescribeEndProcess(
+        EndProcessOutcome outcome, RemoteProcessState? state, string label, int pid) => outcome switch
+        {
+            EndProcessOutcome.Ended => (FAInfoBarSeverity.Success, $"{label} has ended."),
+            EndProcessOutcome.StillRunning => (FAInfoBarSeverity.Warning,
+                $"SIGTERM was sent to {label}, but the process is still running. It may need more time or ignore the signal."),
+            EndProcessOutcome.PermissionDenied => (FAInfoBarSeverity.Error,
+                $"Permission denied: the SSH user is not allowed to signal {label}. Nothing was sent."),
+            EndProcessOutcome.Gone => (FAInfoBarSeverity.Informational,
+                $"{label} had already exited. Nothing was sent."),
+            EndProcessOutcome.IdentityChanged => (FAInfoBarSeverity.Warning,
+                $"The selection has expired: PID {pid} now belongs to another process. Nothing was sent."),
+            EndProcessOutcome.Unsupported => (FAInfoBarSeverity.Error,
+                "This host cannot end processes safely (python3 3.9 or newer with pidfd support on Linux 5.3 or newer is required). Nothing was sent."),
+            EndProcessOutcome.TimedOut => state switch
+            {
+                RemoteProcessState.Ended => (FAInfoBarSeverity.Informational,
+                    $"The host did not answer in time. {label} is no longer running."),
+                RemoteProcessState.Replaced => (FAInfoBarSeverity.Informational,
+                    $"The host did not answer in time. {label} is no longer running; PID {pid} belongs to another process now."),
+                RemoteProcessState.Running => (FAInfoBarSeverity.Warning,
+                    $"The host did not answer in time and {label} is still running. SIGTERM may not have been sent; it was not sent again."),
+                _ => (FAInfoBarSeverity.Warning,
+                    $"The host did not answer in time and the state of {label} could not be read. SIGTERM was not sent again.")
+            },
+            EndProcessOutcome.Unavailable => (FAInfoBarSeverity.Error,
+                $"The SSH command channel is unavailable. SIGTERM may not have reached {label}."),
+            _ => (FAInfoBarSeverity.Error,
+                $"The host gave an unexpected answer. It is unknown whether SIGTERM reached {label}; check the process list.")
+        };
 
     public void SortProcesses(string property)
     {
@@ -243,6 +371,8 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
 
                 if (showSample && dashboard is not null && dashboard == _dashboardCts && IsAvailable)
                     await SampleProcessesAsync(service, dashboard.Token);
+                if (_activeDashboard && IsAvailable)
+                    await ProbeSignalSupportAsync(service, token);
 
                 await _wake.WaitAsync(PollInterval, token);
             }
@@ -371,10 +501,21 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         catch (OperationCanceledException) { }
     }
 
-    private async Task<SshCommandResult> ReadAsync(ISshService service, string command, int limit, CancellationToken token)
+    // Once per connection, and only for the dashboard: the status bar does not need it.
+    private async Task ProbeSignalSupportAsync(ISshService service, CancellationToken token)
+    {
+        if (SignalSupport is not (null or ProcessSignalSupport.Unknown) || _probeAttempts >= MaxProbeAttempts) return;
+        _probeAttempts++;
+        var result = await ReadAsync(service, LinuxProcessControl.ProbeCommand, 4096, token);
+        if (!token.IsCancellationRequested && ReferenceEquals(service, _sshService))
+            SignalSupport = LinuxProcessControl.ParseProbe(result);
+    }
+
+    private async Task<SshCommandResult> ReadAsync(
+        ISshService service, string command, int limit, CancellationToken token, TimeSpan? timeout = null)
     {
         await _commands.WaitAsync(token);
-        try { return await service.RunBoundedCommandAsync(command, limit, SampleTimeout, token); }
+        try { return await service.RunBoundedCommandAsync(command, limit, timeout ?? SampleTimeout, token); }
         finally { _commands.Release(); }
     }
 
