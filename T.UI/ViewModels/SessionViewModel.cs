@@ -77,7 +77,19 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private SystemMonitorViewModel _systemMonitor = new();
     [ObservableProperty] private string _pathInput = "/";
 
-    partial void OnIsActiveChanged(bool value) => UpdateSystemMonitorVisibility();
+    /// <summary>The session is on screen (its pane is shown and the terminals are not hidden behind the tunnels).</summary>
+    [ObservableProperty] private bool _isVisibleInLayout;
+
+    /// <summary>The session is one of several panes: it gets its own frame, and the active one is marked.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsActivePane))]
+    private bool _isSplitPane;
+
+    public bool IsActivePane => IsSplitPane && IsActive;
+
+    partial void OnIsActiveChanged(bool value) => OnPropertyChanged(nameof(IsActivePane));
+
+    partial void OnIsVisibleInLayoutChanged(bool value) => UpdateSystemMonitorVisibility();
 
     partial void OnSelectedSessionTabChanged(int value) => UpdateSystemMonitorVisibility();
 
@@ -85,7 +97,8 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void SelectSessionTab(string tab) => SelectedSessionTab = int.Parse(tab, System.Globalization.CultureInfo.InvariantCulture);
 
-    private void UpdateSystemMonitorVisibility() => SystemMonitor.SetVisibility(IsActive, IsActive && SelectedSessionTab == 2);
+    // Every visible pane keeps its compact monitor and history up to date, not only the active one.
+    private void UpdateSystemMonitorVisibility() => SystemMonitor.SetVisibility(IsVisibleInLayout, IsVisibleInLayout && SelectedSessionTab == 2);
 
     /// <summary>Address bar segments of <see cref="CurrentPath"/> (server root first).</summary>
     [ObservableProperty] private ObservableCollection<PathSegment> _pathSegments = [];
@@ -280,9 +293,20 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     // ── Connection ───────────────────────────────────────────────────────
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    public async Task ConnectAsync()
+    public Task ConnectAsync() => ConnectCoreAsync(reconnect: false);
+
+    private async Task ConnectCoreAsync(bool reconnect)
     {
-        if (IsConnected || IsConnecting || _disposed) return;
+        if (_disposed || IsBusy || (!reconnect && IsConnected)) return;
+
+        if (IsConnected)
+        {
+            // The service replaces the connection without reporting "disconnected" in between:
+            // whatever belongs to the old one ends here.
+            IsConnected = false;
+            SystemMonitor.Stop();
+            ClearExplorer();
+        }
 
         ConnectionError = null;
         ShowOverlay = true;
@@ -318,6 +342,38 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
         ConnectionError = null;
         await ConnectAsync();
     }
+
+    /// <summary>
+    /// Connects again. A live connection is only dropped after a confirmation: the shell and
+    /// everything running in it ends.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReconnectAsync()
+    {
+        if (_disposed || IsBusy) return;
+        if (IsConnected)
+        {
+            if (Host is not { } owner) return;
+            if (!await DialogService.ConfirmAsync(owner, "Reconnect",
+                    $"Close the connection to {Session.Address} and connect again? Programs running in this terminal end.",
+                    "Reconnect"))
+                return;
+        }
+
+        ConnectionError = null;
+        // No Disconnect() first: it reports a clean end of the session, which closes the tab.
+        await ConnectCoreAsync(reconnect: true);
+    }
+
+    /// <summary>Raised for the terminal view: copy the whole buffer / clear it (nothing is sent to the host).</summary>
+    public event Action? CopyOutputRequested;
+    public event Action? ClearOutputRequested;
+
+    [RelayCommand]
+    private void CopyOutput() => CopyOutputRequested?.Invoke();
+
+    [RelayCommand]
+    private void ClearOutput() => ClearOutputRequested?.Invoke();
 
     [RelayCommand]
     private void CloseSession() => SessionClosed?.Invoke(this);

@@ -42,6 +42,8 @@ public partial class MainWindowViewModel(
 
     public bool ShowTerminalList => !ShowTunnels && !IsTerminalListCollapsed;
 
+    partial void OnShowTunnelsChanged(bool value) => SessionsTree.TerminalsShown = !value;
+
     /// <summary>Shows the terminals; when they are shown already, collapses or expands the profile list.</summary>
     [RelayCommand]
     private void ShowTerminals()

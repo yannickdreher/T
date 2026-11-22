@@ -15,11 +15,6 @@ public partial class SessionView : UserControl
     {
         InitializeComponent();
         _terminalHost = this.FindControl<ContentControl>("TerminalHost");
-        if (this.FindControl<SessionStatusBarView>("StatusBar") is { } statusBar)
-        {
-            statusBar.CopyRequested += () => _terminalView?.CopyOutput();
-            statusBar.ClearRequested += () => _terminalView?.ClearOutput();
-        }
     }
 
     public SessionView(IServiceProvider serviceProvider) : this()

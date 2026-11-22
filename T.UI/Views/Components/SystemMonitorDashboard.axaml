@@ -54,8 +54,27 @@
           RowDefinitions="Auto,Auto,Auto,*,Auto"
           RowSpacing="12">
 
-        <!--  Header: state and actions on the right (tab and status bar already name the host)  -->
+        <!--
+            Header: what the host calls itself and its kernel (the tab shows the address the user
+            connected to, which can be an alias or a jump target); state and actions on the right.
+        -->
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel VerticalAlignment="Center"
+                        IsVisible="{Binding Hostname, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                <PathIcon Classes="small" Data="{StaticResource server_regular}" />
+                <TextBlock MaxWidth="260"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="{Binding Hostname}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock MaxWidth="260"
+                           VerticalAlignment="Center"
+                           Classes="hint"
+                           Text="{Binding HostVersion}"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         Spacing="8">

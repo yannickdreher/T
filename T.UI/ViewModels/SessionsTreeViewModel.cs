@@ -100,8 +100,11 @@ public partial class SessionsTreeViewModel : ViewModelBase
         UpdateOpenTabCounts();
     }
 
-    private void OnOpenSessionsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
+    private void OnOpenSessionsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
         UpdateOpenTabCounts();
+        UpdatePanes();
+    }
 
     /// <summary>The tree shows how many tabs of each saved session are open.</summary>
     private void UpdateOpenTabCounts()
@@ -126,6 +129,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
     {
         foreach (var session in OpenSessions)
             session.IsActive = session == value;
+        UpdatePanes();
     }
 
     private void LoadDesignTimeData()
@@ -167,6 +171,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
         }
 
         var general = _settingsService?.Current.General;
+        if (general != null && Enum.IsDefined(general.TerminalLayout)) Layout = general.TerminalLayout;
         if (general is { ReconnectOnStartup: true })
         {
             foreach (var id in general.LastOpenSessionIds.ToList())
@@ -184,6 +189,7 @@ public partial class SessionsTreeViewModel : ViewModelBase
         if (_settingsService is null) return;
         // One entry per tab: a session that was open twice is reopened twice.
         _settingsService.Current.General.LastOpenSessionIds = OpenSessions.Select(s => s.Session.Id).ToList();
+        _settingsService.Current.General.TerminalLayout = Layout;
         _settingsService.Save();
     }
 

@@ -26,10 +26,6 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(BuildBranch)' != ''">
-    <AssemblyMetadata Include="BuildBranch" Value="$(BuildBranch)" />
-  </ItemGroup>
-
   <ItemGroup>
     <AvaloniaXaml Remove="Properties\PublishProfiles\**" />
     <Compile Remove="Properties\PublishProfiles\**" />

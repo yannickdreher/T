@@ -14,15 +14,31 @@
         <vm:SessionViewModel />
     </Design.DataContext>
 
-    <!--
-        Session surface: continues the selected tab of the tab strip (same color and border). The top
-        left corner stays square because the first tab sits on it; the content is clipped to the corners.
-    -->
-    <Border Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
-            BorderBrush="{DynamicResource TabViewBorderBrush}"
-            BorderThickness="1,0,1,1"
-            ClipToBounds="True"
-            CornerRadius="0,4,4,4">
+    <UserControl.Styles>
+        <!--
+            Session surface: continues the selected tab of the tab strip (same color and border). The top
+            left corner stays square because the first tab sits on it; the content is clipped to the corners.
+        -->
+        <Style Selector="Border.sessionSurface">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TabViewBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1,0,1,1" />
+            <Setter Property="CornerRadius" Value="0,4,4,4" />
+        </Style>
+        <!--  One of several panes: a card of its own; the active one (keyboard input, selected tab) is marked  -->
+        <Style Selector="Border.sessionSurface.split">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Border.sessionSurface.activePane">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Classes="sessionSurface"
+            Classes.activePane="{Binding IsActivePane}"
+            Classes.split="{Binding IsSplitPane}"
+            ClipToBounds="True">
         <Grid RowDefinitions="*,Auto">
 
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
@@ -83,7 +99,7 @@
                 </Border>
             </Grid>
 
-            <components:SessionStatusBarView x:Name="StatusBar" Grid.Row="1" />
+            <components:SessionStatusBarView Grid.Row="1" />
 
             <!--  Connecting / reconnecting  -->
             <Border Grid.RowSpan="2"

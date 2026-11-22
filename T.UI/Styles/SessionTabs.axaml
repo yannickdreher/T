@@ -67,9 +67,10 @@
 
     <!--
         While the terminal is shown (TabView class "terminal"), the selected tab takes the terminal's
-        colours and merges into it, like in Windows Terminal. In the file view it keeps the surface colour.
+        colours and merges into it, like in Windows Terminal. In the file view it keeps the surface colour,
+        and so it does in a split layout, where the surface with the panes is below it.
     -->
-    <Style Selector="ui|FATabView.terminal ui|FATabViewItem:selected">
+    <Style Selector="ui|FATabView.terminal:not(.split) ui|FATabViewItem:selected">
         <Style Selector="^ /template/ Border#BottomBorderLine">
             <Setter Property="Background" Value="{DynamicResource TerminalBackgroundBrush}" />
         </Style>
@@ -85,6 +86,15 @@
         <Style Selector="^ /template/ Button#CloseButton">
             <Setter Property="Foreground" Value="{DynamicResource TerminalForegroundBrush}" />
         </Style>
+    </Style>
+
+    <!--  Surface of a split layout: continues the selected tab; the panes lie on it as cards  -->
+    <Style Selector="Border.paneSurface.split">
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorTertiaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TabViewBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1,0,1,1" />
+        <Setter Property="CornerRadius" Value="0,4,4,4" />
     </Style>
 
     <!--

@@ -81,6 +81,8 @@ public partial class TerminalView : UserControl, IDisposable
         DataContext = vm;
 
         _currentVm.OutputReceived += OnOutputReceived;
+        _currentVm.CopyOutputRequested += OnCopyOutputRequested;
+        _currentVm.ClearOutputRequested += OnClearOutputRequested;
         _currentVm.PropertyChanged += OnViewModelPropertyChanged;
         _currentVm.TerminalSettings.PropertyChanged += OnSettingsChanged;
         _currentVm.Disposed += OnSessionDisposed;
@@ -97,6 +99,8 @@ public partial class TerminalView : UserControl, IDisposable
         if (_currentVm is null) return;
 
         _currentVm.OutputReceived -= OnOutputReceived;
+        _currentVm.CopyOutputRequested -= OnCopyOutputRequested;
+        _currentVm.ClearOutputRequested -= OnClearOutputRequested;
         _currentVm.PropertyChanged -= OnViewModelPropertyChanged;
         _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
         _currentVm.Disposed -= OnSessionDisposed;
@@ -272,13 +276,8 @@ public partial class TerminalView : UserControl, IDisposable
     }
 
     private void OnOutputReceived(string text) => _terminal?.AppendOutput(text);
-    public void CopyOutput() => _terminal?.CopyOutput();
-    public void ClearOutput()
-    {
-        _terminal?.ClearOutput();
-        if (_currentVm?.IsConnected == true)
-            _currentVm.SendTerminalInput("\r");
-    }
+    private void OnCopyOutputRequested() => _terminal?.CopyOutput();
+    private void OnClearOutputRequested() => _terminal?.ClearOutput();
     private void OnInputReceived(string text) => _currentVm?.SendTerminalInput(text);
     private void OnTerminalResized(uint columns, uint rows, uint pixelWidth, uint pixelHeight)
     {

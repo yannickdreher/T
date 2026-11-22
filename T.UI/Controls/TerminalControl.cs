@@ -1469,6 +1469,7 @@ public partial class TerminalControl : Control
         _cursorLayer.InvalidateVisual();
     }
 
+    /// <summary>Copies the whole buffer (scrollback and screen) as text.</summary>
     public async void CopyOutput()
     {
         if (_terminal is not { } terminal || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
@@ -1489,10 +1490,14 @@ public partial class TerminalControl : Control
         catch { /* Clipboard may be unavailable. */ }
     }
 
+    /// <summary>Clears screen and scrollback except the current line; sends nothing to the host.</summary>
     public void ClearOutput()
     {
+        if (_terminal is not { } terminal) return;
         ClearSelection();
-        AppendOutput("\u001b[2J\u001b[3J\u001b[H");
+        SetScrollOffset(0);
+        terminal.ClearBuffer();
+        _lastScrollbackLinesAdded = terminal.ScrollbackLinesAdded;
     }
 
     private async void CopyToClipboard()

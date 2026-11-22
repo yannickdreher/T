@@ -90,6 +90,21 @@ public static class LinuxSystemMetrics
             """));
     }
 
+    /// <summary>
+    /// "Linux version 6.8.0-71-generic (buildd@...) ..." (/proc/version) becomes
+    /// "Linux 6.8.0-71-generic"; empty when the text has another form.
+    /// </summary>
+    public static string ShortKernelVersion(string? procVersion)
+    {
+        var parts = (procVersion ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3 || parts[1] != "version") return "";
+        var text = $"{parts[0]} {parts[2]}";
+        return text.Length <= MaxIdentityLength ? text : text[..MaxIdentityLength];
+    }
+
+    // The host's answer is untrusted: a name is at most 64 characters on Linux.
+    private const int MaxIdentityLength = 64;
+
     public static HostCounters ParseHost(string output)
     {
         (long Total, long Idle)? cpu = null;
@@ -110,7 +125,7 @@ public static class LinuxSystemMetrics
             {
                 if (line.Length > 0)
                 {
-                    if (section == "hostname") hostname ??= line;
+                    if (section == "hostname") hostname ??= line.Length <= MaxIdentityLength ? line : line[..MaxIdentityLength];
                     else version ??= line;
                 }
                 continue;

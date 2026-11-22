@@ -16,6 +16,24 @@ public class LinuxSystemMetricsTests
         Assert.Equal("Linux version test", missing.Version);
     }
 
+    [Theory]
+    [InlineData("Linux version 6.8.0-71-generic (buildd@lcy02-amd64-051) (gcc 13.3.0) #71-Ubuntu SMP", "Linux 6.8.0-71-generic")]
+    [InlineData("Linux version 5.15.0", "Linux 5.15.0")]
+    [InlineData("something else", "")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void ShortKernelVersion_KeepsSystemAndRelease(string? procVersion, string expected)
+    {
+        Assert.Equal(expected, LinuxSystemMetrics.ShortKernelVersion(procVersion));
+    }
+
+    [Fact]
+    public void HostMetrics_LimitTheLengthOfTheHostname()
+    {
+        var data = LinuxSystemMetrics.ParseHost("==HOSTNAME==\n" + new string('a', 500) + "\n");
+        Assert.Equal(64, data.Hostname?.Length);
+    }
+
     [Fact]
     public void HostMetrics_UseKiBAndOnlyTheFirstEightCpuCounters()
     {

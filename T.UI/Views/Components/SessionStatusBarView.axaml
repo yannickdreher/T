@@ -50,8 +50,13 @@
             <Border Grid.Column="1"
                     Padding="10,0"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,1,0"
-                    IsVisible="{Binding SystemMonitor.IsAvailable}">
+                    BorderThickness="0,0,1,0">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SystemMonitor.IsAvailable" />
+                        <Binding Path="!IsSplitPane" />
+                    </MultiBinding>
+                </Border.IsVisible>
                 <components:SystemMonitorView DataContext="{Binding SystemMonitor}" />
             </Border>
 
@@ -118,26 +123,6 @@
                     Width="43"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1,0,0,0">
-                <StackPanel Orientation="Horizontal" Spacing="2">
-                <ComboBox x:Name="FontSizeSelector" Width="70" Height="22" MinHeight="0"
-                          Padding="6,0" FontSize="11"
-                          SelectedItem="{Binding TerminalSettings.TerminalFontSize, Mode=TwoWay}"
-                          ToolTip.Tip="Terminal font size">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{ReflectionBinding ., StringFormat='{}{0}px'}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <Button Height="22" MinWidth="26" Classes="tool" Click="OnCopy" ToolTip.Tip="Copy terminal output">
-                    <PathIcon Width="12" Height="12" Data="{StaticResource copy_regular}" />
-                </Button>
-                <Button Height="22" MinWidth="26" Classes="tool" Click="OnClear" ToolTip.Tip="Clear terminal output">
-                    <PathIcon Width="12" Height="12" Data="{StaticResource delete_regular}" />
-                </Button>
-                <Button Height="22" MinWidth="26" Classes="tool" Command="{Binding ReconnectTerminalCommand}" ToolTip.Tip="Reconnect">
-                    <PathIcon Width="12" Height="12" Data="{StaticResource arrow_clockwise_regular}" />
-                </Button>
                 <Button Height="22"
                         MinWidth="26"
                         HorizontalAlignment="Center"
@@ -148,7 +133,6 @@
                               Height="12"
                               Data="{StaticResource bug_regular}" />
                 </Button>
-                </StackPanel>
             </Border>
         </Grid>
     </Border>
