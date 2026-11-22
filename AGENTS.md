@@ -13,8 +13,18 @@ dotnet test --project T.Tests/T.Tests.csproj
 ./lint.ps1 -Fix     # applies the formatting
 ```
 
-Run all three before you open a pull request, and say in the description what you ran and what
-you could not test (for example: "not tried against a real SSH host").
+Run `./lint.ps1 -Fix` before every commit, not only at the end: formatting that piles up is harder
+to review and fails CI. Build and test before you open a pull request, and say in the description
+what you ran and what you could not test (for example: "not tried against a real SSH host").
+`lint.ps1` is a PowerShell script; on Linux and macOS it needs `pwsh`. CI lints on Windows only.
+
+To have Git check this for you, enable the pre-commit hook once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+It rejects a commit when the lint fails (`git commit --no-verify` skips it for work in progress).
 
 ## Pull requests
 
