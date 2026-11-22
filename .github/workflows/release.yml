@@ -8,8 +8,37 @@ permissions:
   contents: write
 
 jobs:
+  # Stable releases (tag without suffix, or "-stable") are only built from master. Beta and other
+  # channels may be tagged on any branch.
+  check-source:
+    name: Check release source
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Stable releases must be tagged on master
+      env:
+        TAG: ${{ github.event.release.tag_name }}
+      run: |
+        if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-stable)?$ ]]; then
+            echo "$TAG is not a stable release: no restriction."
+            exit 0
+        fi
+        git fetch origin master
+        if git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/master; then
+            echo "$TAG is on master."
+        else
+            echo "::error::$TAG is a stable release, but its commit is not on master. Merge develop into master and tag master."
+            exit 1
+        fi
+
   publish-windows:
     name: Publish Windows
+    needs: check-source
     runs-on: windows-latest
     
     steps:
@@ -100,6 +129,7 @@ jobs:
 
   publish-linux:
     name: Publish Linux
+    needs: check-source
     runs-on: ubuntu-latest
     
     steps:

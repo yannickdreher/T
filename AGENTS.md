@@ -32,6 +32,8 @@ It rejects a commit when the lint fails (`git commit --no-verify` skips it for w
 - One topic per pull request. Leave out unrelated documentation, editor files and build scripts.
 - Commit subjects: `feature: …`, `fix: …`, `ci: …` in lower case, imperative, in English.
 - UI text, comments and documentation are in English.
+- Releases: betas (`vX.Y.Z-beta`) are tagged on `develop`. Stable releases (`vX.Y.Z`) are tagged on
+  `master` only, after `develop` was merged into it; the release workflow rejects anything else.
 - New logic comes with tests. A change to the database schema bumps `SchemaVersion`, adds a
   migration and a test that opens a database of the previous version.
 
