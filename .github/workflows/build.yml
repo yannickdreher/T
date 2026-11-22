@@ -1,9 +1,17 @@
 name: Build
 
 on:
+  # Only the long-lived branches: a release tag points at a commit that was already built here,
+  # and other branches are built through their pull request (no second run for the same commit).
   push:
-  # Pull requests from forks do not trigger "push" here; their first run needs a maintainer's approval.
+    branches: [master, develop]
+  # The first run of a new contributor needs a maintainer's approval.
   pull_request:
+
+# A newer push to the same branch or pull request replaces the run that is still in progress.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
