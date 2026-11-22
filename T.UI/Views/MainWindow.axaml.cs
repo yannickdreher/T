@@ -133,13 +133,19 @@ public partial class MainWindow : FAAppWindow
         {
             ItemsSource = new List<Control>
             {
+                // Asks before it drops a live connection.
                 new MenuItem
                 {
                     Header = "Reconnect",
                     Icon = MenuIcon("arrow_clockwise_regular"),
-                    Command = session.RetryConnectCommand,
-                    IsEnabled = !session.IsConnected && !session.IsConnecting
+                    Command = session.ReconnectCommand,
+                    IsEnabled = !session.IsBusy
                 },
+                new Separator(),
+                new MenuItem { Header = "Copy all output", Icon = MenuIcon("copy_regular"), Command = session.CopyOutputCommand },
+                // Local only: nothing is sent to the host.
+                new MenuItem { Header = "Clear screen and scrollback", Icon = MenuIcon("delete_regular"), Command = session.ClearOutputCommand },
+                new Separator(),
                 new MenuItem
                 {
                     Header = "Duplicate tab",

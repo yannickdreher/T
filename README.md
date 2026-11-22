@@ -7,6 +7,7 @@ A modern, cross-platform SSH terminal client built with Avalonia UI.
 ## Features
 
 - 🖥️ Terminal emulator (VT100/xterm-256color)
+- 🪟 Split layouts: two terminals side by side or stacked, or four in a grid, each with its own file and monitor view
 - 💡 Command suggestions while typing at the prompt: the matching command from the server's history as grey text (→ accepts) and a list of further history entries and commands (↓ selects, Tab inserts, Ctrl+Space opens it)
 - 📁 SFTP file browser with Auto-upload on file save
 - 🔐 Multiple authentication methods (password, keyboard-interactive incl. 2FA prompts, private keys incl. OpenSSH certificates and PuTTY `.ppk`, default keys from `~/.ssh`)

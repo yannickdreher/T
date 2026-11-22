@@ -50,8 +50,13 @@
             <Border Grid.Column="1"
                     Padding="10,0"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,1,0"
-                    IsVisible="{Binding SystemMonitor.IsAvailable}">
+                    BorderThickness="0,0,1,0">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SystemMonitor.IsAvailable" />
+                        <Binding Path="!IsSplitPane" />
+                    </MultiBinding>
+                </Border.IsVisible>
                 <components:SystemMonitorView DataContext="{Binding SystemMonitor}" />
             </Border>
 

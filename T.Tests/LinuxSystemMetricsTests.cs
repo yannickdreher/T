@@ -5,6 +5,36 @@ namespace T.Tests;
 public class LinuxSystemMetricsTests
 {
     [Fact]
+    public void HostMetrics_ReadIdentityAndHandleMissingHostname()
+    {
+        var data = LinuxSystemMetrics.ParseHost("cpu 1 0 1 8 0 0 0 0\n==DF==\n/dev/sda 100 50 50 50% /\n==HOSTNAME==\nserver-01\n==VERSION==\nLinux version 6.8 test\n");
+        Assert.Equal("server-01", data.Hostname);
+        Assert.Equal("Linux version 6.8 test", data.Version);
+        Assert.Equal(50d, data.Disk?.Percent);
+        var missing = LinuxSystemMetrics.ParseHost("==HOSTNAME==\n\n==VERSION==\nLinux version test\n");
+        Assert.Null(missing.Hostname);
+        Assert.Equal("Linux version test", missing.Version);
+    }
+
+    [Theory]
+    [InlineData("Linux version 6.8.0-71-generic (buildd@lcy02-amd64-051) (gcc 13.3.0) #71-Ubuntu SMP", "Linux 6.8.0-71-generic")]
+    [InlineData("Linux version 5.15.0", "Linux 5.15.0")]
+    [InlineData("something else", "")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void ShortKernelVersion_KeepsSystemAndRelease(string? procVersion, string expected)
+    {
+        Assert.Equal(expected, LinuxSystemMetrics.ShortKernelVersion(procVersion));
+    }
+
+    [Fact]
+    public void HostMetrics_LimitTheLengthOfTheHostname()
+    {
+        var data = LinuxSystemMetrics.ParseHost("==HOSTNAME==\n" + new string('a', 500) + "\n");
+        Assert.Equal(64, data.Hostname?.Length);
+    }
+
+    [Fact]
     public void HostMetrics_UseKiBAndOnlyTheFirstEightCpuCounters()
     {
         var data = LinuxSystemMetrics.ParseHost("""

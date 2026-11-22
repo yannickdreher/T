@@ -737,6 +737,37 @@ public class VirtualTerminal(int width = 80, int height = 24)
         }
     }
 
+    /// <summary>
+    /// Clears the scrollback and the screen except the line the cursor is on (with shell
+    /// integration: the command line being edited), which moves to the top. Nothing is sent to
+    /// the host, so a half-typed command stays as it is and is never executed. A full-screen
+    /// program (alternate screen) keeps its screen; only the scrollback behind it is cleared.
+    /// </summary>
+    public void ClearBuffer()
+    {
+        _scrollback.Clear();
+
+        if (_alternateBuffer == null)
+        {
+            int keepFrom = _cursorRow;
+            if (_promptState == ShellPromptState.Input)
+            {
+                long inputRow = _inputStartLine - ScrollbackLinesAdded;
+                if (inputRow >= 0 && inputRow <= _cursorRow) keepFrom = (int)inputRow;
+            }
+
+            _buffer.RemoveTopLines(keepFrom);
+            _cursorRow -= keepFrom;
+            _inputStartLine -= keepFrom;
+            _savedCursor.Row = Math.Max(0, _savedCursor.Row - keepFrom);
+            for (int row = _cursorRow + 1; row < _height; row++)
+                _buffer[row].Clear();
+        }
+
+        MarkAllDirty();
+        ScreenChanged?.Invoke();
+    }
+
     /// <summary>A new shell starts (connect, reconnect): forget the markers of the previous one.</summary>
     public void ResetShellIntegration()
     {

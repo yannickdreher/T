@@ -79,6 +79,9 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private MonitorMetric _network = EmptyMetric;
     [ObservableProperty] private bool _isPaused;
     [ObservableProperty] private string _targetHost = "";
+    /// <summary>The host's own name (kernel) and its kernel version; empty until the first sample.</summary>
+    [ObservableProperty] private string _hostname = "";
+    [ObservableProperty] private string _hostVersion = "";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLive), nameof(IsStatusBusy), nameof(IsStatusWarning))]
     private string _status = "Not connected";
@@ -145,6 +148,8 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         Disk = new MonitorMetric("71% · 28.4 GiB free", Series(_ => 71));
         Network = new MonitorMetric("↓ 1.2 MiB/s  ↑ 240 KiB/s", Series(i => 900_000 + 500_000 * Math.Sin(i / 6.0), i => 240_000 + 80_000 * Math.Cos(i / 5.0)));
         TargetHost = "admin@build-01.example.com";
+        Hostname = "build-01";
+        HostVersion = "Linux 6.8.0-71-generic";
         Status = "Live";
         LastSample = now.ToString("T", CultureInfo.CurrentCulture);
         Processes =
@@ -181,6 +186,8 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         Stop();
         _sshService = sshService;
         TargetHost = targetHost;
+        Hostname = "";
+        HostVersion = "";
         _previousHost = null;
         _cpuHistory.Clear();
         _ramHistory.Clear();
@@ -401,6 +408,8 @@ public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
         }
 
         var counters = LinuxSystemMetrics.ParseHost(result.Output);
+        Hostname = counters.Hostname ?? "";
+        HostVersion = LinuxSystemMetrics.ShortKernelVersion(counters.Version);
         long stamp = Stopwatch.GetTimestamp();
         var cpu = LinuxSystemMetrics.CpuPercent(_previousHost, counters);
         var rate = LinuxSystemMetrics.NetworkRate(_previousHost, counters, Stopwatch.GetElapsedTime(_hostTimestamp, stamp).TotalSeconds);

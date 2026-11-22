@@ -1469,6 +1469,37 @@ public partial class TerminalControl : Control
         _cursorLayer.InvalidateVisual();
     }
 
+    /// <summary>Copies the whole buffer (scrollback and screen) as text.</summary>
+    public async void CopyOutput()
+    {
+        if (_terminal is not { } terminal || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        var text = new StringBuilder();
+        int rows = terminal.Scrollback.Count + terminal.Height;
+        for (int row = 0; row < rows; row++)
+        {
+            int start = text.Length;
+            for (int col = 0; col < terminal.Width; col++)
+            {
+                var cell = GetCellAbsolute(col, row);
+                if (!cell.IsWideContinuation) terminal.Graphemes.AppendText(text, cell.CodePoint);
+            }
+            while (text.Length > start && text[^1] == ' ') text.Length--;
+            if (row < rows - 1) text.AppendLine();
+        }
+        try { await clipboard.SetTextAsync(text.ToString().TrimEnd('\r', '\n')); }
+        catch { /* Clipboard may be unavailable. */ }
+    }
+
+    /// <summary>Clears screen and scrollback except the current line; sends nothing to the host.</summary>
+    public void ClearOutput()
+    {
+        if (_terminal is not { } terminal) return;
+        ClearSelection();
+        SetScrollOffset(0);
+        terminal.ClearBuffer();
+        _lastScrollbackLinesAdded = terminal.ScrollbackLinesAdded;
+    }
+
     private async void CopyToClipboard()
     {
         var text = GetSelectedText();

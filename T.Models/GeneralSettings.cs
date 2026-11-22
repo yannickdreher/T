@@ -16,4 +16,7 @@ public partial class GeneralSettings : ObservableObject
 
     /// <summary>Sessions that were open when the app was closed (used by <see cref="ReconnectOnStartup"/>).</summary>
     [ObservableProperty] private List<string> _lastOpenSessionIds = [];
+
+    /// <summary>Arrangement of the terminals (single or split) when the app was closed.</summary>
+    [ObservableProperty] private TerminalLayout _terminalLayout;
 }

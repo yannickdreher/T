@@ -7,6 +7,47 @@ public class VirtualTerminalTests
     private static string RowText(VirtualTerminal vt, int row) => TerminalText.Row(vt, row);
 
     [Fact]
+    public void ClearBuffer_KeepsOnlyTheCursorLine()
+    {
+        var vt = new VirtualTerminal(20, 4);
+        vt.Feed("one\r\ntwo\r\nthree\r\nfour\r\nfive\r\n$ rm -rf x");
+        Assert.NotEmpty(vt.Scrollback);
+
+        vt.ClearBuffer();
+
+        Assert.Empty(vt.Scrollback);
+        Assert.Equal("$ rm -rf x", RowText(vt, 0));
+        Assert.Equal("", RowText(vt, 1));
+        Assert.Equal((0, 10), (vt.CursorRow, vt.CursorColumn));
+    }
+
+    [Fact]
+    public void ClearBuffer_KeepsAWrappedCommandLineAndItsPromptMarkers()
+    {
+        var vt = new VirtualTerminal(10, 5);
+        vt.Feed("old\r\n\x1b]133;A\a$ \x1b]133;B\aecho 0123456789");
+
+        vt.ClearBuffer();
+
+        Assert.True(vt.TryGetCommandLine(out var line));
+        Assert.Equal("echo 0123456789", line.Text);
+        Assert.Equal(0, line.StartRow);
+        Assert.Equal("$ echo 012", RowText(vt, 0));
+    }
+
+    [Fact]
+    public void ClearBuffer_OnTheAlternateScreen_LeavesTheProgramAlone()
+    {
+        var vt = new VirtualTerminal(20, 4);
+        vt.Feed("a\r\nb\r\nc\r\nd\r\ne\r\n\x1b[?1049heditor");
+
+        vt.ClearBuffer();
+
+        Assert.Empty(vt.Scrollback);
+        Assert.Equal("editor", RowText(vt, 0));
+    }
+
+    [Fact]
     public void DeleteCharacters_WithCountLargerThanLine_DoesNotThrow()
     {
         var vt = new VirtualTerminal(20, 5);

@@ -4,6 +4,7 @@
                  xmlns:components="using:T.UI.Views.Components"
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:models="using:T.Models"
                  xmlns:ui="using:FluentAvalonia.UI.Controls"
                  xmlns:vm="using:T.UI.ViewModels"
                  xmlns:wnd="using:FluentAvalonia.UI.Windowing"
@@ -100,36 +101,102 @@
                     Session tabs (styled in Styles/SessionTabs.axaml). The strip lies on the window background;
                     the selected tab merges into the content below it: into the terminal (terminal colours) while
                     it is shown, otherwise into the session surface (SessionView). Tabs share the width like in
-                    Windows Terminal. SessionViewCache keeps one SessionView per session so the live terminal
-                    survives tab switches.
+                    Windows Terminal. The tab view is the strip only: the sessions are shown below it by
+                    SessionPanesView, one or several at a time (split layouts).
                 -->
-                <ui:FATabView x:Name="SessionTabs"
-                              CanReorderTabs="True"
-                              Classes.terminal="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0, FallbackValue=False}"
-                              CloseButtonOverlayMode="Auto"
-                              IsAddTabButtonVisible="True"
-                              IsVisible="{Binding SessionsTree.HasOpenSessions}"
-                              SelectedItem="{Binding SessionsTree.ActiveSession}"
-                              TabItemsSource="{Binding SessionsTree.OpenSessions}"
-                              TabWidthMode="Equal">
-                    <ui:FATabView.TabItemTemplate>
-                        <DataTemplate x:DataType="vm:SessionViewModel">
-                            <ui:FATabViewItem Content="{Binding}" ToolTip.Tip="{Binding Session.Address}">
-                                <ui:FATabViewItem.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Ellipse Classes="status"
-                                                 Classes.busy="{Binding IsBusy}"
-                                                 Classes.connected="{Binding IsConnected}"
-                                                 Classes.error="{Binding HasConnectionError}" />
-                                        <TextBlock MaxWidth="220"
-                                                   Text="{Binding TabTitle}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </ui:FATabViewItem.Header>
-                            </ui:FATabViewItem>
-                        </DataTemplate>
-                    </ui:FATabView.TabItemTemplate>
-                </ui:FATabView>
+                <Grid IsVisible="{Binding SessionsTree.HasOpenSessions}" RowDefinitions="Auto,*">
+                    <ui:FATabView x:Name="SessionTabs"
+                                  CanReorderTabs="True"
+                                  Classes.split="{Binding SessionsTree.IsSplit}"
+                                  Classes.terminal="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0, FallbackValue=False}"
+                                  CloseButtonOverlayMode="Auto"
+                                  IsAddTabButtonVisible="True"
+                                  SelectedItem="{Binding SessionsTree.ActiveSession}"
+                                  TabItemsSource="{Binding SessionsTree.OpenSessions}"
+                                  TabWidthMode="Equal">
+                        <ui:FATabView.TabItemTemplate>
+                            <DataTemplate x:DataType="vm:SessionViewModel">
+                                <ui:FATabViewItem ToolTip.Tip="{Binding Session.Address}">
+                                    <ui:FATabViewItem.Header>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Classes="status"
+                                                     Classes.busy="{Binding IsBusy}"
+                                                     Classes.connected="{Binding IsConnected}"
+                                                     Classes.error="{Binding HasConnectionError}" />
+                                            <TextBlock MaxWidth="220"
+                                                       Text="{Binding TabTitle}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </ui:FATabViewItem.Header>
+                                </ui:FATabViewItem>
+                            </DataTemplate>
+                        </ui:FATabView.TabItemTemplate>
+
+                        <!--  Layout of the terminals: one, or several panes  -->
+                        <ui:FATabView.TabStripFooter>
+                            <Button Margin="0,0,2,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Terminal layout"
+                                    Classes="tool"
+                                    ToolTip.Tip="Terminal layout">
+                                <PathIcon Data="{StaticResource grid_regular}" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.One}"
+                                                  Header="Single terminal">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsSingleLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.SideBySide}"
+                                                  Header="Two side by side">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsSideBySideLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.Stacked}"
+                                                  Header="Two stacked">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsStackedLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding SessionsTree.SetLayoutCommand}"
+                                                  CommandParameter="{x:Static models:TerminalLayout.Grid}"
+                                                  Header="Four in a grid">
+                                            <MenuItem.Icon>
+                                                <PathIcon Classes="small"
+                                                          Data="{StaticResource checkmark_regular}"
+                                                          IsVisible="{Binding SessionsTree.IsGridLayout}" />
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </ui:FATabView.TabStripFooter>
+                    </ui:FATabView>
+
+                    <!--
+                        Split layouts: the panes are cards on the session surface, which continues the
+                        selected tab like the single session does.
+                    -->
+                    <Border Grid.Row="1"
+                            Classes="paneSurface"
+                            Classes.split="{Binding SessionsTree.IsSplit}">
+                        <components:SessionPanesView ActivateCommand="{Binding SessionsTree.ActivateSessionCommand}"
+                                                     Layout="{Binding SessionsTree.Layout}"
+                                                     Panes="{Binding SessionsTree.Panes}" />
+                    </Border>
+                </Grid>
 
                 <!--  Welcome screen (no session open)  -->
                 <Border Classes="Panel" IsVisible="{Binding !SessionsTree.HasOpenSessions}">
