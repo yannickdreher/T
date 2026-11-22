@@ -20,17 +20,19 @@ dotnet package update SSH.NET@2026.0.0 --project T.Services/T.Services.csproj
 dotnet build T.slnx
 ```
 
-SSH.NET is referenced by `T.Services`; the example version is already present on the rebased branch. Select the project that actually references the package. Review the diff and warnings and test the affected features.
+SSH.NET is referenced by `T.Services`; the example version is already declared in the project. Select the project that actually references the package. Review the diff and warnings and test the affected features.
 
 ## Update Vulnerable Packages
 
-The included batch script invokes the .NET SDK's vulnerability-based update for the solution, then restores and builds it:
+Use the .NET SDK's vulnerability-based update for the solution, then restore and build it:
 
 ```powershell
-.\update-nuget.bat
+dotnet package update --project T.slnx --vulnerable
+dotnet restore T.slnx
+dotnet build T.slnx --no-restore
 ```
 
-The update can change project files and requires access to configured feeds and advisory data. It cannot guarantee a fix for every transitive dependency. If a step fails, earlier changes remain; review the diff before retrying. The script does not commit changes. A successful build can still contain warnings.
+The update can change project files and requires access to configured feeds and advisory data. It cannot guarantee a fix for every transitive dependency. If a step fails, earlier changes remain; review the diff before retrying. A successful build can still contain warnings.
 
 Afterwards, inspect the changes and remaining vulnerabilities:
 
@@ -39,4 +41,4 @@ git diff
 dotnet list T.slnx package --include-transitive --vulnerable
 ```
 
-For historical findings, see [NUGET-SECURITY-FINDINGS.md](NUGET-SECURITY-FINDINGS.md). Test SSH, SFTP, database functionality and the user interface after relevant updates.
+For the latest documented review and historical findings, see [NUGET-SECURITY-FINDINGS.md](NUGET-SECURITY-FINDINGS.md). Test SSH, SFTP, database functionality and the user interface after relevant updates.

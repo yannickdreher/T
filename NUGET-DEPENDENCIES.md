@@ -17,10 +17,10 @@ The `Include` attribute is the NuGet package ID; `Version` specifies the request
 Alternatively, run the .NET CLI from the repository root:
 
 ```powershell
-dotnet add T.Services/T.Services.csproj package SSH.NET --version <version>
+dotnet add T.Services/T.Services.csproj package SSH.NET --version 2026.0.0
 ```
 
-Replace `<version>` with the chosen version. The command updates the project file and restores dependencies. To remove a package, run:
+Replace `2026.0.0` with the chosen version. The command updates the project file and restores dependencies. To remove a package, run:
 
 ```powershell
 dotnet remove T.Services/T.Services.csproj package SSH.NET
@@ -28,7 +28,7 @@ dotnet remove T.Services/T.Services.csproj package SSH.NET
 
 ## Restore and Inspect Dependencies
 
-Restore packages and build the application:
+Restore and build the services project:
 
 ```powershell
 dotnet restore T.Services/T.Services.csproj

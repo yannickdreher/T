@@ -7,6 +7,8 @@ A modern, cross-platform SSH terminal client built with Avalonia UI.
 ## Features
 
 - 🖥️ Terminal emulator (VT100/xterm-256color)
+- 🪟 Single, two-pane, and four-pane terminal layouts; terminal font size, copy, clear, and reconnect controls
+- 📊 Remote Linux host metrics with hostname and kernel version
 - 💡 Command suggestions while typing at the prompt: the matching command from the server's history as grey text (→ accepts) and a list of further history entries and commands (↓ selects, Tab inserts, Ctrl+Space opens it)
 - 📁 SFTP file browser with Auto-upload on file save
 - 🔐 Multiple authentication methods (password, keyboard-interactive incl. 2FA prompts, private keys incl. OpenSSH certificates and PuTTY `.ppk`, default keys from `~/.ssh`)
@@ -61,6 +63,10 @@ configuration of the `step` CLI (`step ca bootstrap`).
 dotnet build T.slnx
 dotnet test --project T.Tests/T.Tests.csproj
 ```
+
+See [VSCODE-BUILD.md](VSCODE-BUILD.md) for VS Code and Windows publishing instructions,
+[NUGET-DEPENDENCIES.md](NUGET-DEPENDENCIES.md) for dependency management, and
+[NUGET-UPDATES.md](NUGET-UPDATES.md) for package updates.
 
 ## License
 

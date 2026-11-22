@@ -44,4 +44,4 @@ Run `build-windows.bat` from the project folder, or execute the equivalent comma
 dotnet publish T.UI/T.UI.csproj -c Release -r win-x64 --self-contained -o publish
 ```
 
-The application will be available at `publish/T.exe`. Adjust the runtime identifier for other target platforms.
+The application will be available at `publish/T.exe`. When distributing it, include the entire `publish` folder. Adjust the runtime identifier for other target platforms.
