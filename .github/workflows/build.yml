@@ -2,6 +2,8 @@ name: Build
 
 on:
   push:
+  # Pull requests from forks do not trigger "push" here; their first run needs a maintainer's approval.
+  pull_request:
 
 permissions:
   contents: read
