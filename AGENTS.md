@@ -6,9 +6,9 @@ be merged. Read it before you write code.
 
 ## Commands
 
-```
-dotnet build T.slnx
-dotnet test --project T.Tests/T.Tests.csproj
+```powershell
+./build.ps1         # builds the solution
+./test.ps1          # runs tests with a private temporary directory on Windows
 ./lint.ps1          # checks XAML (XAML Styler) and C# (dotnet format); CI fails without it
 ./lint.ps1 -Fix     # applies the formatting
 ```
