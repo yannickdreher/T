@@ -32,7 +32,7 @@
                     Spacing="6">
             <Image Width="20"
                    Height="20"
-                   Source="avares://T/Assets/logo-v3.png" />
+                   Source="avares://T/Assets/logo.png" />
             <Menu VerticalAlignment="Center">
                 <Menu.Styles>
                     <Style Selector="MenuItem">
@@ -165,7 +165,7 @@
                         <Image Width="120"
                                Height="120"
                                Margin="0,0,0,8"
-                               Source="avares://T/Assets/logo-v3.png" />
+                               Source="avares://T/Assets/logo.png" />
                         <TextBlock HorizontalAlignment="Center"
                                    FontSize="24"
                                    FontWeight="SemiBold"

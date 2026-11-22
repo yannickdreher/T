@@ -11,7 +11,7 @@
             <StackPanel HorizontalAlignment="Center" Spacing="12">
                 <Image Width="80"
                        Height="80"
-                       Source="avares://T/Assets/logo-v3.png" />
+                       Source="avares://T/Assets/logo.png" />
                 <TextBlock HorizontalAlignment="Center"
                            FontSize="24"
                            FontWeight="Bold"
