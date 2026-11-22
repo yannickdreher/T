@@ -202,8 +202,13 @@ internal sealed class TerminalRowRenderer
 
             using (context.PushTransform(Matrix.CreateTranslation(origin.X, origin.Y + screenRow * LineHeight)))
             {
-                foreach (var (rect, brush) in cache.Backgrounds)
-                    context.FillRectangle(brush, rect);
+                // Fractional cell boundaries otherwise blend adjacent rectangles with the
+                // default background, leaving visible seams at some font sizes and scales.
+                using (context.PushRenderOptions(new RenderOptions { EdgeMode = EdgeMode.Aliased }))
+                {
+                    foreach (var (rect, brush) in cache.Backgrounds)
+                        context.FillRectangle(brush, rect);
+                }
 
                 foreach (var (run, brush) in cache.Glyphs)
                     context.DrawGlyphRun(brush, run);
