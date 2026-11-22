@@ -576,9 +576,9 @@ public partial class SessionsTreeViewModel : ViewModelBase
     /// <summary>Tunnels connect through profiles and are deleted with them: say so in the confirmation.</summary>
     private async Task<string> DescribeTunnelsAsync(List<SshSession> sessions)
     {
-        if (_storageService is not ILocalTunnelStore store || sessions.Count == 0) return "";
+        if (_storageService is not ITunnelStore store || sessions.Count == 0) return "";
         var ids = sessions.Select(s => s.Id).ToHashSet();
-        var tunnels = (await store.LoadAllLocalTunnelsAsync()).Where(r => ids.Contains(r.SessionId)).ToList();
+        var tunnels = (await store.LoadAllTunnelsAsync()).Where(r => ids.Contains(r.SessionId)).ToList();
         return tunnels.Count switch
         {
             0 => "",

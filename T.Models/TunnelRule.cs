@@ -2,7 +2,7 @@ using System.Net;
 
 namespace T.Models;
 
-public sealed record LocalTunnelRule(
+public sealed record TunnelRule(
     string Id,
     string SessionId,
     string Name,
@@ -26,7 +26,7 @@ public sealed record LocalTunnelRule(
         && (IPAddress.TryParse(host, out _) || Uri.CheckHostName(host) == UriHostNameType.Dns);
 }
 
-public enum LocalTunnelState
+public enum TunnelState
 {
     Inactive,
     Starting,
@@ -35,10 +35,10 @@ public enum LocalTunnelState
     Failed
 }
 
-public readonly record struct LocalTunnelStatus(LocalTunnelState State, string? Error = null);
+public readonly record struct TunnelStatus(TunnelState State, string? Error = null);
 
 /// <summary>
 /// Traffic of a running tunnel since it was started. "Received" is data from the target to the
 /// local client, "sent" from the local client to the target.
 /// </summary>
-public readonly record struct LocalTunnelStatistics(long BytesReceived, long BytesSent, int OpenConnections, long TotalConnections);
+public readonly record struct TunnelStatistics(long BytesReceived, long BytesSent, int OpenConnections, long TotalConnections);

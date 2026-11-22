@@ -178,7 +178,7 @@
                      ItemsSource="{Binding Tunnels}"
                      SelectedItem="{Binding Selected}">
                 <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LocalTunnelRow">
+                    <DataTemplate x:DataType="vm:TunnelRow">
                         <Grid Background="Transparent"
                               Classes="tunnelColumns"
                               ColumnDefinitions="24,2*,2.4*,1.5*,96,100,100,40"
@@ -254,7 +254,7 @@
                     IsVisible="{Binding HasSelection}">
                 <ContentControl Content="{Binding Selected}">
                     <ContentControl.ContentTemplate>
-                        <DataTemplate x:DataType="vm:LocalTunnelRow">
+                        <DataTemplate x:DataType="vm:TunnelRow">
                             <StackPanel Spacing="12">
                                 <!--  Name, state, route; connect/disconnect  -->
                                 <Grid ColumnDefinitions="*,Auto">

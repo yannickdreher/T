@@ -9,35 +9,35 @@ namespace T.UI.ViewModels;
 /// <summary>One saved tunnel in the tunnels view with its runtime state and traffic.</summary>
 /// <param name="rule">The saved rule.</param>
 /// <param name="profile">The terminal profile the tunnel connects through (live object of the terminals pane).</param>
-public partial class LocalTunnelRow(LocalTunnelRule rule, SshSession profile) : ObservableObject
+public partial class TunnelRow(TunnelRule rule, SshSession profile) : ObservableObject
 {
     private const string None = "—";
     private static readonly TimeSpan HistoryLength = TimeSpan.FromMinutes(5);
 
     private readonly List<MonitorPoint> _samples = [];
-    private LocalTunnelStatistics _previous;
+    private TunnelStatistics _previous;
     private DateTimeOffset? _startedAt;
 
-    public LocalTunnelRule Rule { get; } = rule;
+    public TunnelRule Rule { get; } = rule;
     public SshSession Profile { get; } = profile;
 
     /// <summary>"127.0.0.1:8080 → db.internal:5432"</summary>
     public string Route => $"{Rule.LocalEndpoint} → {Rule.TargetEndpoint}";
 
-    public LocalTunnelState State => Status.State;
-    public bool IsRunning => State is LocalTunnelState.Starting or LocalTunnelState.Active or LocalTunnelState.Stopping;
-    public bool IsActive => State == LocalTunnelState.Active;
-    public bool IsBusy => State is LocalTunnelState.Starting or LocalTunnelState.Stopping;
-    public bool IsFailed => State == LocalTunnelState.Failed;
+    public TunnelState State => Status.State;
+    public bool IsRunning => State is TunnelState.Starting or TunnelState.Active or TunnelState.Stopping;
+    public bool IsActive => State == TunnelState.Active;
+    public bool IsBusy => State is TunnelState.Starting or TunnelState.Stopping;
+    public bool IsFailed => State == TunnelState.Failed;
     public string? Error => Status.Error;
     public bool HasError => !string.IsNullOrEmpty(Status.Error);
 
     public string StateText => State switch
     {
-        LocalTunnelState.Starting => "Connecting…",
-        LocalTunnelState.Active => "Active",
-        LocalTunnelState.Stopping => "Disconnecting…",
-        LocalTunnelState.Failed => "Failed",
+        TunnelState.Starting => "Connecting…",
+        TunnelState.Active => "Active",
+        TunnelState.Stopping => "Disconnecting…",
+        TunnelState.Failed => "Failed",
         _ => "Inactive"
     };
 
@@ -47,7 +47,7 @@ public partial class LocalTunnelRow(LocalTunnelRule rule, SshSession profile) : 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(State), nameof(IsRunning), nameof(IsActive), nameof(IsBusy), nameof(IsFailed),
         nameof(Error), nameof(HasError), nameof(StateText), nameof(ToggleText))]
-    private LocalTunnelStatus _status;
+    private TunnelStatus _status;
 
     // ── Traffic (updated about once per second while the tunnel runs) ───
 
@@ -81,7 +81,7 @@ public partial class LocalTunnelRow(LocalTunnelRule rule, SshSession profile) : 
     }
 
     /// <summary>Applies the counters of the running tunnel; <paramref name="seconds"/> is the time since the last sample.</summary>
-    public void ApplySample(LocalTunnelStatistics stats, DateTimeOffset now, double seconds)
+    public void ApplySample(TunnelStatistics stats, DateTimeOffset now, double seconds)
     {
         double received = Math.Max(0, stats.BytesReceived - _previous.BytesReceived) / Math.Max(0.1, seconds);
         double sent = Math.Max(0, stats.BytesSent - _previous.BytesSent) / Math.Max(0.1, seconds);

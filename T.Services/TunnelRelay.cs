@@ -42,7 +42,7 @@ internal sealed class TunnelRelay : IDisposable
         _ = AcceptLoopAsync(_stop.Token);
     }
 
-    public LocalTunnelStatistics Statistics => new(
+    public TunnelStatistics Statistics => new(
         Interlocked.Read(ref _received), Interlocked.Read(ref _sent), _open.Count, Interlocked.Read(ref _total));
 
     /// <summary>A free loopback port for the inner (SSH) listener.</summary>

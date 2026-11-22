@@ -24,7 +24,7 @@ public partial class TunnelEditorViewModel : ViewModelBase
     /// <param name="profiles">Terminal profiles to choose from.</param>
     /// <param name="rule">The edited rule, or null for a new tunnel.</param>
     /// <param name="preselected">Profile for a new tunnel (e.g. the one selected in the terminals pane).</param>
-    public TunnelEditorViewModel(IEnumerable<SshSession> profiles, LocalTunnelRule? rule, SshSession? preselected)
+    public TunnelEditorViewModel(IEnumerable<SshSession> profiles, TunnelRule? rule, SshSession? preselected)
     {
         Profiles = profiles.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         if (rule is null)
@@ -62,9 +62,9 @@ public partial class TunnelEditorViewModel : ViewModelBase
     }
 
     /// <summary>The rule to save; the name defaults to the target.</summary>
-    public LocalTunnelRule CreateRule(string id, string sessionId)
+    public TunnelRule CreateRule(string id, string sessionId)
     {
-        var rule = new LocalTunnelRule(id, sessionId, Name.Trim(), LocalPort, TargetHost.Trim(), TargetPort, false);
+        var rule = new TunnelRule(id, sessionId, Name.Trim(), LocalPort, TargetHost.Trim(), TargetPort, false);
         return rule.Name.Length > 0 ? rule : rule with { Name = rule.TargetEndpoint };
     }
 }

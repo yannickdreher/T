@@ -35,9 +35,9 @@ public partial class SqliteSessionStorageService
     }
 
     /// <summary>All tunnel rules, each referring to the terminal profile it connects through.</summary>
-    public async Task<List<LocalTunnelRule>> LoadAllLocalTunnelsAsync()
+    public async Task<List<TunnelRule>> LoadAllTunnelsAsync()
     {
-        var rules = new List<LocalTunnelRule>();
+        var rules = new List<TunnelRule>();
         await using var connection = CreateConnection();
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -48,7 +48,7 @@ public partial class SqliteSessionStorageService
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            rules.Add(new LocalTunnelRule(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            rules.Add(new TunnelRule(reader.GetString(0), reader.GetString(1), reader.GetString(2),
                 reader.GetInt32(3), reader.GetString(4), reader.GetInt32(5), reader.GetBoolean(6)));
         }
         return rules;

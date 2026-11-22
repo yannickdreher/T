@@ -13,19 +13,19 @@ public sealed partial class SshService
     // New auto-start listeners wait for the previous connection's bound ports to be released.
     private Task _connectionCleanup = Task.CompletedTask;
 
-    public event Action? LocalTunnelsChanged;
+    public event Action? TunnelsChanged;
 
-    public LocalTunnelStatus GetLocalTunnelStatus(string ruleId) =>
-        _connection is { IsClosing: false } connection && connection.LocalTunnels.TryGetValue(ruleId, out var tunnel)
+    public TunnelStatus GetTunnelStatus(string ruleId) =>
+        _connection is { IsClosing: false } connection && connection.Tunnels.TryGetValue(ruleId, out var tunnel)
             ? tunnel.Status
             : default;
 
-    public LocalTunnelStatistics GetLocalTunnelStatistics(string ruleId) =>
-        _connection is { IsClosing: false } connection && connection.LocalTunnels.TryGetValue(ruleId, out var tunnel)
+    public TunnelStatistics GetTunnelStatistics(string ruleId) =>
+        _connection is { IsClosing: false } connection && connection.Tunnels.TryGetValue(ruleId, out var tunnel)
             ? tunnel.Statistics
             : default;
 
-    public Task StartLocalTunnelAsync(LocalTunnelRule rule)
+    public Task StartTunnelAsync(TunnelRule rule)
     {
         lock (_stateLock)
         {
@@ -33,39 +33,39 @@ public sealed partial class SshService
                 throw new InvalidOperationException("Connect the SSH session before starting the tunnel.");
 
             var cleanup = _connectionCleanup;
-            return Task.Run(() => StartLocalTunnelCoreAsync(connection, cleanup, rule));
+            return Task.Run(() => StartTunnelCoreAsync(connection, cleanup, rule));
         }
     }
 
-    public Task StopLocalTunnelAsync(string ruleId)
+    public Task StopTunnelAsync(string ruleId)
     {
         var connection = _connection;
-        return connection is null ? Task.CompletedTask : Task.Run(() => StopLocalTunnelCoreAsync(connection, ruleId));
+        return connection is null ? Task.CompletedTask : Task.Run(() => StopTunnelCoreAsync(connection, ruleId));
     }
 
-    private async Task StartLocalTunnelCoreAsync(Connection connection, Task cleanup, LocalTunnelRule rule)
+    private async Task StartTunnelCoreAsync(Connection connection, Task cleanup, TunnelRule rule)
     {
         if (rule.SessionId != _session.Id || !rule.HasValidEndpoints)
             throw new ArgumentException("Invalid tunnel rule for this SSH session.", nameof(rule));
 
         await cleanup;
-        await connection.LocalTunnelGate.WaitAsync();
+        await connection.TunnelGate.WaitAsync();
         try
         {
             if (!IsCurrentTunnelConnection(connection))
                 throw new InvalidOperationException("The SSH connection was closed before the tunnel could start.");
-            if (_sessionStorageService is not ILocalTunnelStore store)
+            if (_sessionStorageService is not ITunnelStore store)
                 throw new InvalidOperationException("Tunnels are not supported by the session storage.");
-            if (connection.LocalTunnels.TryGetValue(rule.Id, out var existing) && existing.HasListener)
+            if (connection.Tunnels.TryGetValue(rule.Id, out var existing) && existing.HasListener)
                 return; // already listening
 
-            var tunnel = new LocalTunnel();
-            connection.LocalTunnels[rule.Id] = tunnel;
-            NotifyLocalTunnelsChanged(connection);
+            var tunnel = new Tunnel();
+            connection.Tunnels[rule.Id] = tunnel;
+            NotifyTunnelsChanged(connection);
 
             try
             {
-                tunnel.Lease = await store.AcquireLocalTunnelAsync(rule, connection.Token);
+                tunnel.Lease = await store.AcquireTunnelAsync(rule, connection.Token);
                 if (!IsCurrentTunnelConnection(connection))
                 {
                     tunnel.Release(connection.Ssh);
@@ -78,12 +78,12 @@ public sealed partial class SshService
                 tunnel.Relay = relay;
                 relay.Start();
 
-                var listener = new LocalTunnelPort(rule, innerPort);
+                var listener = new TunnelPort(rule, innerPort);
                 tunnel.Listener = listener;
                 tunnel.ErrorHandler = (_, e) =>
                 {
                     if (tunnel.ReportForwardingError(e.Exception.Message))
-                        NotifyLocalTunnelsChanged(connection);
+                        NotifyTunnelsChanged(connection);
                 };
                 listener.Exception += tunnel.ErrorHandler;
                 connection.Ssh.AddForwardedPort(listener);
@@ -94,7 +94,7 @@ public sealed partial class SshService
                     tunnel.Release(connection.Ssh);
                     return;
                 }
-                tunnel.SetStatus(new LocalTunnelStatus(LocalTunnelState.Active));
+                tunnel.SetStatus(new TunnelStatus(TunnelState.Active));
             }
             catch (Exception ex)
             {
@@ -102,74 +102,74 @@ public sealed partial class SshService
                 var message = ex is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse }
                     ? $"Local port {rule.LocalEndpoint} is already in use."
                     : ex.Message;
-                tunnel.SetStatus(new LocalTunnelStatus(LocalTunnelState.Failed, message));
+                tunnel.SetStatus(new TunnelStatus(TunnelState.Failed, message));
             }
 
-            NotifyLocalTunnelsChanged(connection);
+            NotifyTunnelsChanged(connection);
         }
-        finally { connection.LocalTunnelGate.Release(); }
+        finally { connection.TunnelGate.Release(); }
     }
 
-    private async Task StopLocalTunnelCoreAsync(Connection connection, string ruleId)
+    private async Task StopTunnelCoreAsync(Connection connection, string ruleId)
     {
-        await connection.LocalTunnelGate.WaitAsync();
+        await connection.TunnelGate.WaitAsync();
         try
         {
-            if (!connection.LocalTunnels.TryGetValue(ruleId, out var tunnel)) return;
-            tunnel.SetStatus(new LocalTunnelStatus(LocalTunnelState.Stopping));
-            NotifyLocalTunnelsChanged(connection);
+            if (!connection.Tunnels.TryGetValue(ruleId, out var tunnel)) return;
+            tunnel.SetStatus(new TunnelStatus(TunnelState.Stopping));
+            NotifyTunnelsChanged(connection);
             tunnel.Release(connection.Ssh);
-            connection.LocalTunnels.TryRemove(ruleId, out _);
-            NotifyLocalTunnelsChanged(connection);
+            connection.Tunnels.TryRemove(ruleId, out _);
+            NotifyTunnelsChanged(connection);
         }
-        finally { connection.LocalTunnelGate.Release(); }
+        finally { connection.TunnelGate.Release(); }
     }
 
     private bool IsCurrentTunnelConnection(Connection connection) =>
         !_disposed && !connection.IsClosing && ReferenceEquals(_connection, connection) && connection.Ssh.IsConnected;
 
-    private void NotifyLocalTunnelsChanged(Connection connection)
+    private void NotifyTunnelsChanged(Connection connection)
     {
         if (IsCurrentTunnelConnection(connection))
-            LocalTunnelsChanged?.Invoke();
+            TunnelsChanged?.Invoke();
     }
 
     private sealed partial class Connection
     {
-        public SemaphoreSlim LocalTunnelGate { get; } = new(1, 1);
-        public ConcurrentDictionary<string, LocalTunnel> LocalTunnels { get; } = new();
+        public SemaphoreSlim TunnelGate { get; } = new(1, 1);
+        public ConcurrentDictionary<string, Tunnel> Tunnels { get; } = new();
 
-        private void DisposeLocalTunnels()
+        private void DisposeTunnels()
         {
-            LocalTunnelGate.Wait();
+            TunnelGate.Wait();
             try
             {
-                foreach (var tunnel in LocalTunnels.Values)
+                foreach (var tunnel in Tunnels.Values)
                     tunnel.Release(Ssh);
-                LocalTunnels.Clear();
+                Tunnels.Clear();
             }
-            finally { LocalTunnelGate.Release(); }
+            finally { TunnelGate.Release(); }
         }
     }
 
-    private sealed class LocalTunnel
+    private sealed class Tunnel
     {
         private readonly Lock _statusLock = new();
-        private LocalTunnelStatus _status = new(LocalTunnelState.Starting);
+        private TunnelStatus _status = new(TunnelState.Starting);
 
-        public LocalTunnelPort? Listener { get; set; }
+        public TunnelPort? Listener { get; set; }
         public TunnelRelay? Relay { get; set; }
-        public LocalTunnelStatistics Statistics => Relay?.Statistics ?? default;
+        public TunnelStatistics Statistics => Relay?.Statistics ?? default;
         public EventHandler<ExceptionEventArgs>? ErrorHandler { get; set; }
         public IDisposable? Lease { get; set; }
         public bool HasListener => Listener is not null;
 
-        public LocalTunnelStatus Status
+        public TunnelStatus Status
         {
             get { lock (_statusLock) return _status; }
         }
 
-        public void SetStatus(LocalTunnelStatus status)
+        public void SetStatus(TunnelStatus status)
         {
             lock (_statusLock) _status = status;
         }
@@ -178,8 +178,8 @@ public sealed partial class SshService
         {
             lock (_statusLock)
             {
-                if (_status.State != LocalTunnelState.Active) return false;
-                _status = new LocalTunnelStatus(LocalTunnelState.Active, $"Forwarding attempt failed: {message}");
+                if (_status.State != TunnelState.Active) return false;
+                _status = new TunnelStatus(TunnelState.Active, $"Forwarding attempt failed: {message}");
                 return true;
             }
         }
@@ -207,8 +207,8 @@ public sealed partial class SshService
     }
 
     /// <summary>SSH.NET's forwarding listener on an internal loopback port behind the <see cref="TunnelRelay"/>.</summary>
-    private sealed class LocalTunnelPort(LocalTunnelRule rule, int innerPort)
-        : ForwardedPortLocal(LocalTunnelRule.BindAddress, (uint)innerPort, rule.TargetHost, (uint)rule.TargetPort)
+    private sealed class TunnelPort(TunnelRule rule, int innerPort)
+        : ForwardedPortLocal(TunnelRule.BindAddress, (uint)innerPort, rule.TargetHost, (uint)rule.TargetPort)
     {
         // ForwardedPort.Start registers an additional error handler before binding the socket.
         // StartPort registers the local listener's handlers after binding succeeds.

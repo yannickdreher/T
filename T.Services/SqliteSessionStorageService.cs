@@ -7,7 +7,7 @@ namespace T.Services;
 
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
     Justification = "The tunnel gate uses no wait handle and must stay usable by leases released during SSH shutdown.")]
-public partial class SqliteSessionStorageService : ISessionStorageService, ILocalTunnelStore
+public partial class SqliteSessionStorageService : ISessionStorageService, ITunnelStore
 {
     private const int SchemaVersion = 8;
     private const string SessionColumns =
@@ -81,7 +81,7 @@ public partial class SqliteSessionStorageService : ISessionStorageService, ILoca
         AddColumnIfMissing(connection, "Sessions", "ProxyJumpSessionId", "TEXT");
         AddColumnIfMissing(connection, "Sessions", "StepProfileId", "TEXT");
         AddColumnIfMissing(connection, "Sessions", "TunnelOwned", "INTEGER NOT NULL DEFAULT 0");
-        InitializeLocalTunnels(connection);
+        InitializeTunnels(connection);
 
         // Previous versions re-created an empty "Hosts" table on every start.
         if (TableExists(connection, "Hosts") && Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM Hosts;"), CultureInfo.InvariantCulture) == 0)

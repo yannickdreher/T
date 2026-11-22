@@ -5,7 +5,7 @@ using T.Services;
 
 namespace T.Tests;
 
-public class LocalTunnelRuleTests
+public class TunnelRuleTests
 {
     [Theory]
     [InlineData("service.internal", 8080, 80, true)]
@@ -18,7 +18,7 @@ public class LocalTunnelRuleTests
     [InlineData("service.internal", 8080, 65536, false)]
     public void Validation_AcceptsHostAndPortPairs(string host, int localPort, int targetPort, bool valid)
     {
-        var rule = new LocalTunnelRule("rule", "session", "Example", localPort, host, targetPort, false);
+        var rule = new TunnelRule("rule", "session", "Example", localPort, host, targetPort, false);
 
         Assert.Equal(valid, rule.HasValidEndpoints);
         Assert.Equal($"127.0.0.1:{localPort}", rule.LocalEndpoint);
@@ -51,24 +51,24 @@ public class LocalTunnelRuleTests
 
         var encryption = new PlaceholderEncryption();
         var storage = new SqliteSessionStorageService(encryption, dbPath);
-        Assert.Empty(await storage.LoadLocalTunnelsAsync("standalone"));
-        Assert.Empty(await storage.LoadLocalTunnelsAsync("nested"));
+        Assert.Empty(await storage.LoadTunnelsAsync("standalone"));
+        Assert.Empty(await storage.LoadTunnelsAsync("nested"));
 
-        var outside = new LocalTunnelRule("a", "standalone", "Outside", 8080, "::1", 80, true);
-        var inside = new LocalTunnelRule("b", "nested", "Inside", 8081, "service.internal", 81, false);
-        await storage.SaveLocalTunnelAsync(outside, creating: true);
-        await storage.SaveLocalTunnelAsync(inside, creating: true);
+        var outside = new TunnelRule("a", "standalone", "Outside", 8080, "::1", 80, true);
+        var inside = new TunnelRule("b", "nested", "Inside", 8081, "service.internal", 81, false);
+        await storage.SaveTunnelAsync(outside, creating: true);
+        await storage.SaveTunnelAsync(inside, creating: true);
 
         storage = new SqliteSessionStorageService(encryption, dbPath);
-        Assert.Equal(outside, Assert.Single(await storage.LoadLocalTunnelsAsync("standalone")));
-        Assert.Equal(inside, Assert.Single(await storage.LoadLocalTunnelsAsync("nested")));
+        Assert.Equal(outside, Assert.Single(await storage.LoadTunnelsAsync("standalone")));
+        Assert.Equal(inside, Assert.Single(await storage.LoadTunnelsAsync("nested")));
 
         await storage.DeleteFolderAsync("parent");
-        Assert.Empty(await storage.LoadLocalTunnelsAsync("nested"));
-        Assert.Equal(outside, Assert.Single(await storage.LoadLocalTunnelsAsync("standalone")));
+        Assert.Empty(await storage.LoadTunnelsAsync("nested"));
+        Assert.Equal(outside, Assert.Single(await storage.LoadTunnelsAsync("standalone")));
 
         await storage.DeleteSessionAsync("standalone");
-        Assert.Empty(await storage.LoadLocalTunnelsAsync("standalone"));
+        Assert.Empty(await storage.LoadTunnelsAsync("standalone"));
     }
 
     [Fact]
@@ -79,23 +79,23 @@ public class LocalTunnelRuleTests
         var session = new SshSession { Name = "Server", Host = "host", Username = "user" };
         await storage.AddSessionAsync(session);
 
-        var rule = new LocalTunnelRule("rule", session.Id, "Example", 8080, "service.internal", 80, false);
+        var rule = new TunnelRule("rule", session.Id, "Example", 8080, "service.internal", 80, false);
         var updated = rule with { TargetPort = 81 };
-        await storage.SaveLocalTunnelAsync(rule, creating: true);
+        await storage.SaveTunnelAsync(rule, creating: true);
 
         var cancellation = TestContext.Current.CancellationToken;
-        using (await storage.AcquireLocalTunnelAsync(rule, cancellation))
+        using (await storage.AcquireTunnelAsync(rule, cancellation))
         {
-            using (await storage.AcquireLocalTunnelAsync(rule, cancellation))
-                await Assert.ThrowsAsync<InvalidOperationException>(() => storage.DeleteLocalTunnelAsync(rule));
+            using (await storage.AcquireTunnelAsync(rule, cancellation))
+                await Assert.ThrowsAsync<InvalidOperationException>(() => storage.DeleteTunnelAsync(rule));
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => storage.SaveLocalTunnelAsync(updated, creating: false));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => storage.SaveTunnelAsync(updated, creating: false));
         }
 
-        await storage.SaveLocalTunnelAsync(updated, creating: false);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.AcquireLocalTunnelAsync(rule, cancellation));
-        await storage.DeleteLocalTunnelAsync(updated);
-        Assert.Empty(await storage.LoadLocalTunnelsAsync(session.Id));
+        await storage.SaveTunnelAsync(updated, creating: false);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.AcquireTunnelAsync(rule, cancellation));
+        await storage.DeleteTunnelAsync(updated);
+        Assert.Empty(await storage.LoadTunnelsAsync(session.Id));
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class LocalTunnelRuleTests
         Assert.Equal("Tunnels", folder.Name);
         Assert.Equal(folder.Id, profile.FolderId);
 
-        var rule = Assert.Single(await storage.LoadAllLocalTunnelsAsync());
+        var rule = Assert.Single(await storage.LoadAllTunnelsAsync());
         Assert.Equal(("web", "tunnel:web", false), (rule.Id, rule.SessionId, rule.StartOnConnect));
     }
 
@@ -146,19 +146,19 @@ public class LocalTunnelRuleTests
         await storage.AddSessionAsync(first);
         await storage.AddSessionAsync(second);
 
-        var rule = new LocalTunnelRule("rule", first.Id, "Web", 8080, "service.internal", 80, false);
-        await storage.SaveLocalTunnelAsync(rule, creating: true);
-        Assert.Equal(rule, Assert.Single(await storage.LoadAllLocalTunnelsAsync()));
+        var rule = new TunnelRule("rule", first.Id, "Web", 8080, "service.internal", 80, false);
+        await storage.SaveTunnelAsync(rule, creating: true);
+        Assert.Equal(rule, Assert.Single(await storage.LoadAllTunnelsAsync()));
 
         // Switching the profile of a saved tunnel.
         var moved = rule with { SessionId = second.Id };
-        await storage.SaveLocalTunnelAsync(moved, creating: false);
-        Assert.Equal(moved, Assert.Single(await storage.LoadAllLocalTunnelsAsync()));
-        Assert.Empty(await storage.LoadLocalTunnelsAsync(first.Id));
+        await storage.SaveTunnelAsync(moved, creating: false);
+        Assert.Equal(moved, Assert.Single(await storage.LoadAllTunnelsAsync()));
+        Assert.Empty(await storage.LoadTunnelsAsync(first.Id));
 
         // Deleting the profile deletes the tunnels that connect through it.
         await storage.DeleteSessionAsync(second.Id);
-        Assert.Empty(await storage.LoadAllLocalTunnelsAsync());
+        Assert.Empty(await storage.LoadAllTunnelsAsync());
     }
 
     private sealed class PlaceholderEncryption : IEncryptionService
