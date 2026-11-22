@@ -7,7 +7,9 @@ public sealed record HostCounters(
     (long Total, long Idle)? Cpu,
     (long Used, long Total)? Memory,
     (double Percent, long Available, long Total)? Disk,
-    IReadOnlyDictionary<string, (long Received, long Sent)> Network);
+    IReadOnlyDictionary<string, (long Received, long Sent)> Network,
+    string? Hostname = null,
+    string? Version = null);
 
 public sealed record RemoteProcess(int Pid, long StartTime, string Name, string User, string State, long CpuTicks, long? ResidentBytes);
 
@@ -36,6 +38,10 @@ public static class LinuxSystemMetrics
         cat /proc/stat /proc/meminfo /proc/net/dev 2>/dev/null
         printf '\n==DF==\n'
         df -kP / 2>/dev/null || true
+        printf '\n==HOSTNAME==\n'
+        cat /proc/sys/kernel/hostname 2>/dev/null || true
+        printf '\n==VERSION==\n'
+        cat /proc/version 2>/dev/null || true
         """;
 
     private const string ProcessScript = """
@@ -92,10 +98,23 @@ public static class LinuxSystemMetrics
         long memoryTotal = 0;
         long memoryAvailable = -1;
         bool inDisk = false;
+        string? hostname = null, version = null;
+        string? section = null;
 
         foreach (var rawLine in output.Split('\n'))
         {
             var line = rawLine.Trim();
+            if (line == "==HOSTNAME==") { section = "hostname"; continue; }
+            if (line == "==VERSION==") { section = "version"; continue; }
+            if (section is not null)
+            {
+                if (line.Length > 0)
+                {
+                    if (section == "hostname") hostname ??= line;
+                    else version ??= line;
+                }
+                continue;
+            }
             if (line == "==DF==")
             {
                 inDisk = true;
@@ -133,7 +152,7 @@ public static class LinuxSystemMetrics
 
         return new HostCounters(cpu,
             memoryTotal > 0 && memoryAvailable >= 0 ? (Math.Max(0, memoryTotal - memoryAvailable), memoryTotal) : null,
-            disk, network);
+            disk, network, hostname, version);
     }
 
     public static (IReadOnlyList<RemoteProcess> Rows, long ClockTicks, bool IsIncomplete)? ParseProcesses(

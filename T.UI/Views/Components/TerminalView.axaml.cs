@@ -272,6 +272,13 @@ public partial class TerminalView : UserControl, IDisposable
     }
 
     private void OnOutputReceived(string text) => _terminal?.AppendOutput(text);
+    public void CopyOutput() => _terminal?.CopyOutput();
+    public void ClearOutput()
+    {
+        _terminal?.ClearOutput();
+        if (_currentVm?.IsConnected == true)
+            _currentVm.SendTerminalInput("\r");
+    }
     private void OnInputReceived(string text) => _currentVm?.SendTerminalInput(text);
     private void OnTerminalResized(uint columns, uint rows, uint pixelWidth, uint pixelHeight)
     {

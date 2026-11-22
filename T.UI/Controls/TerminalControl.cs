@@ -1469,6 +1469,32 @@ public partial class TerminalControl : Control
         _cursorLayer.InvalidateVisual();
     }
 
+    public async void CopyOutput()
+    {
+        if (_terminal is not { } terminal || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        var text = new StringBuilder();
+        int rows = terminal.Scrollback.Count + terminal.Height;
+        for (int row = 0; row < rows; row++)
+        {
+            int start = text.Length;
+            for (int col = 0; col < terminal.Width; col++)
+            {
+                var cell = GetCellAbsolute(col, row);
+                if (!cell.IsWideContinuation) terminal.Graphemes.AppendText(text, cell.CodePoint);
+            }
+            while (text.Length > start && text[^1] == ' ') text.Length--;
+            if (row < rows - 1) text.AppendLine();
+        }
+        try { await clipboard.SetTextAsync(text.ToString().TrimEnd('\r', '\n')); }
+        catch { /* Clipboard may be unavailable. */ }
+    }
+
+    public void ClearOutput()
+    {
+        ClearSelection();
+        AppendOutput("\u001b[2J\u001b[3J\u001b[H");
+    }
+
     private async void CopyToClipboard()
     {
         var text = GetSelectedText();

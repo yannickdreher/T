@@ -5,6 +5,18 @@ namespace T.Tests;
 public class LinuxSystemMetricsTests
 {
     [Fact]
+    public void HostMetrics_ReadIdentityAndHandleMissingHostname()
+    {
+        var data = LinuxSystemMetrics.ParseHost("cpu 1 0 1 8 0 0 0 0\n==DF==\n/dev/sda 100 50 50 50% /\n==HOSTNAME==\nserver-01\n==VERSION==\nLinux version 6.8 test\n");
+        Assert.Equal("server-01", data.Hostname);
+        Assert.Equal("Linux version 6.8 test", data.Version);
+        Assert.Equal(50d, data.Disk?.Percent);
+        var missing = LinuxSystemMetrics.ParseHost("==HOSTNAME==\n\n==VERSION==\nLinux version test\n");
+        Assert.Null(missing.Hostname);
+        Assert.Equal("Linux version test", missing.Version);
+    }
+
+    [Fact]
     public void HostMetrics_UseKiBAndOnlyTheFirstEightCpuCounters()
     {
         var data = LinuxSystemMetrics.ParseHost("""

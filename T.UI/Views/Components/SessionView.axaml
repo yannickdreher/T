@@ -83,7 +83,7 @@
                 </Border>
             </Grid>
 
-            <components:SessionStatusBarView Grid.Row="1" />
+            <components:SessionStatusBarView x:Name="StatusBar" Grid.Row="1" />
 
             <!--  Connecting / reconnecting  -->
             <Border Grid.RowSpan="2"

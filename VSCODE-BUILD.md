@@ -1,45 +1,47 @@
-# Projekt in VS Code kompilieren
+# Build the Project in VS Code
 
-## Voraussetzungen
+## Prerequisites
 
-- [Visual Studio Code](https://code.visualstudio.com/) und optional die Erweiterung **C# Dev Kit**.
-- Das [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) für Windows. Die .NET Runtime allein reicht zum Kompilieren nicht aus.
-- Eine Internetverbindung für den ersten Download der NuGet-Pakete.
+- [Visual Studio Code](https://code.visualstudio.com/) and, optionally, the **C# Dev Kit** extension.
+- The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for Windows. The .NET runtime alone is not sufficient to build the project.
+- An internet connection to download NuGet packages on the first build.
 
-Nach der SDK-Installation VS Code neu starten und im integrierten Terminal prüfen:
+After installing the SDK, restart VS Code and check the installation in the integrated terminal:
 
 ```powershell
 dotnet --list-sdks
 ```
 
-Die Ausgabe muss eine SDK-Version `10.0.x` enthalten.
+The output must include an SDK version `10.0.x`.
 
-## Kompilieren und starten
+## Build and Run
 
-1. Den Projektordner oder `T.code-workspace` in VS Code öffnen.
-2. Über **Terminal → Neues Terminal** ein Terminal im Projektordner öffnen.
-3. Die Solution kompilieren:
+1. Open the project folder or `T.code-workspace` in VS Code.
+2. Open a terminal in the project folder via **Terminal → New Terminal**.
+3. Build the solution:
 
    ```powershell
    dotnet build T.slnx
    ```
 
-   Der Befehl stellt die NuGet-Abhängigkeiten bei Bedarf automatisch wieder her und baut beide Projekte.
+   The command automatically restores NuGet dependencies as needed and builds the projects in the solution.
 
-4. Die Anwendung starten:
+4. Run the application:
 
    ```powershell
-   dotnet run --project T/T.csproj
+   dotnet run --project T.UI/T.UI.csproj
    ```
 
-Für eine Release-Kompilierung `dotnet build T.slnx -c Release` ausführen. Mit dem C# Dev Kit kann die Anwendung auch über **Ausführen und Debuggen** gestartet werden.
+For a Release build, run `dotnet build T.slnx -c Release`. With C# Dev Kit, you can also start the application through **Run and Debug**.
 
-## Windows-Anwendung veröffentlichen
+## Publish the Windows Application
 
-Für eine eigenständig ausführbare Windows-x64-Version:
+To publish a self-contained Windows x64 version:
+
+Run `build-windows.bat` from the project folder, or execute the equivalent command:
 
 ```powershell
-dotnet publish T/T.csproj -c Release -r win-x64 --self-contained -o publish
+dotnet publish T.UI/T.UI.csproj -c Release -r win-x64 --self-contained -o publish
 ```
 
-Die Anwendung liegt anschließend unter `publish/T.exe`. Für andere Zielplattformen muss die Runtime-ID entsprechend angepasst werden.
+The application will be available at `publish/T.exe`. Adjust the runtime identifier for other target platforms.
