@@ -1,259 +1,490 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using T.Abstractions;
+using T.Services;
 
 namespace T.UI.ViewModels;
 
-/// <summary>
-/// Polls the remote host (Linux-style /proc + df) over an SSH exec channel
-/// and exposes CPU, RAM, network and disk usage. Hides itself when the
-/// remote host does not provide the expected interfaces.
-/// </summary>
+public readonly record struct MonitorPoint(DateTimeOffset Time, double? Value, double? Other = null);
+public sealed record MonitorMetric(string Display, IReadOnlyList<MonitorPoint> Points);
+public sealed record MonitorProcessRow(RemoteProcess Process, double? Cpu)
+{
+    public int Pid => Process.Pid;
+    public long StartTime => Process.StartTime;
+    public string Name => Process.Name;
+    public string User => Process.User;
+    public string State => Process.State;
+    public long? ResidentBytes => Process.ResidentBytes;
+    public string CpuDisplay => Cpu is double percent ? $"{percent:0.0}%" : "—";
+    public string MemoryDisplay => ResidentBytes is long bytes ? SystemMonitorViewModel.FormatBytes(bytes) : "—";
+}
+
+/// <summary>Shares host metrics between the status bar and the live Linux dashboard.</summary>
 public partial class SystemMonitorViewModel : ViewModelBase, IDisposable
 {
-    private const string StatCommand =
-        "cat /proc/stat /proc/meminfo /proc/net/dev 2>/dev/null; echo '==DF=='; df -kP / 2>/dev/null";
-
+    private const string Unknown = "—";
+    private const int DefaultSortDirection = -1;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
-    private const int MaxConsecutiveFailures = 3;
+    private static readonly TimeSpan SampleTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan HistoryLength = TimeSpan.FromMinutes(5);
+    private static readonly MonitorMetric EmptyMetric = new(Unknown, []);
 
-    private ISshService? _sshService;
-    private CancellationTokenSource? _pollCts;
-    private int _failureCount;
-
-    // CPU delta state
-    private long _prevCpuTotal;
-    private long _prevCpuIdle;
-
-    // Network delta state
-    private long _prevNetRx = -1;
-    private long _prevNetTx = -1;
-    private DateTime _prevNetSample;
+    private readonly SemaphoreSlim _commands = new(1);
+    private readonly SemaphoreSlim _wake = new(0, 1);
+    private readonly List<MonitorPoint> _cpuHistory = [];
+    private readonly List<MonitorPoint> _ramHistory = [];
+    private readonly List<MonitorPoint> _diskHistory = [];
+    private readonly List<MonitorPoint> _networkHistory = [];
+    private CancellationTokenSource? _connectionCts;
+    private CancellationTokenSource? _dashboardCts;
+    private CancellationTokenSource? _detailsCts;
+    private IReadOnlyList<MonitorProcessRow> _rows = [];
+    private Dictionary<(int, long), long> _processTicks = [];
+    private HostCounters? _previousHost;
+    private long _hostTimestamp;
+    private long _processTimestamp;
+    private bool _activeTab;
+    private bool _activeDashboard;
+    private bool _refreshRequested;
+    private bool _publishingRows;
+    private string _sortBy = nameof(MonitorProcessRow.Cpu);
+    private int _sortDirection = DefaultSortDirection;
 
     [ObservableProperty] private bool _isAvailable;
     [ObservableProperty] private double _cpuPercent;
     [ObservableProperty] private double _ramPercent;
-    [ObservableProperty] private string _ramDisplay = "—";
-    [ObservableProperty] private string _networkDownDisplay = "—";
-    [ObservableProperty] private string _networkUpDisplay = "—";
+    [ObservableProperty] private string _ramDisplay = Unknown;
+    [ObservableProperty] private string _networkDownDisplay = Unknown;
+    [ObservableProperty] private string _networkUpDisplay = Unknown;
     [ObservableProperty] private double _diskPercent;
-    [ObservableProperty] private string _diskDisplay = "—";
+    [ObservableProperty] private string _diskDisplay = Unknown;
+    [ObservableProperty] private string _cpuDisplay = Unknown;
+    [ObservableProperty] private string _diskPercentDisplay = Unknown;
+    [ObservableProperty] private string _ramPercentDisplay = Unknown;
 
-    public SystemMonitorViewModel() { }
+    [ObservableProperty] private MonitorMetric _cpu = EmptyMetric;
+    [ObservableProperty] private MonitorMetric _memory = EmptyMetric;
+    [ObservableProperty] private MonitorMetric _disk = EmptyMetric;
+    [ObservableProperty] private MonitorMetric _network = EmptyMetric;
+    [ObservableProperty] private bool _isPaused;
+    [ObservableProperty] private string _targetHost = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLive), nameof(IsStatusBusy), nameof(IsStatusWarning))]
+    private string _status = "Not connected";
+
+    // Classification of Status for the dashboard indicator (colour plus the text itself).
+    public bool IsLive => Status == "Live";
+    public bool IsStatusBusy => Status.EndsWith('…');
+    public bool IsStatusWarning => !IsLive && !IsStatusBusy && !Status.StartsWith("Paused", StringComparison.Ordinal);
+    [ObservableProperty] private string _lastSample = Unknown;
+    [ObservableProperty] private string _processFilter = "";
+    [ObservableProperty] private string _processSummary = "No process data";
+    [ObservableProperty] private IReadOnlyList<MonitorProcessRow> _processes = [];
+    [ObservableProperty] private MonitorProcessRow? _selectedProcess;
+    [ObservableProperty] private string _commandLine = "";
+
+    private ISshService? _sshService;
 
     public void LoadDesignTimeData()
     {
         IsAvailable = true;
         CpuPercent = 37;
+        CpuDisplay = "37%";
         RamPercent = 62;
-        RamDisplay = "4.9 / 7.8 GB";
-        NetworkDownDisplay = "1.2 MB/s";
-        NetworkUpDisplay = "240 KB/s";
+        RamPercentDisplay = "62%";
+        RamDisplay = "4.9 / 7.8 GiB";
+        NetworkDownDisplay = "1.2 MiB/s";
+        NetworkUpDisplay = "240 KiB/s";
         DiskPercent = 71;
+        DiskPercentDisplay = "71%";
         DiskDisplay = "71%";
+
+        // Dashboard: five minutes of history and a few processes.
+        var now = DateTimeOffset.Now;
+        MonitorPoint[] Series(Func<int, double> value, Func<int, double>? other = null) =>
+            Enumerable.Range(0, 150).Select(i => new MonitorPoint(now.AddSeconds((i - 149) * 2), value(i), other?.Invoke(i))).ToArray();
+        Cpu = new MonitorMetric("37%", Series(i => 30 + 15 * Math.Sin(i / 9.0) + (i % 7)));
+        Memory = new MonitorMetric("4.9 GiB used · 2.9 GiB available", Series(i => 60 + 4 * Math.Sin(i / 30.0)));
+        Disk = new MonitorMetric("71% · 28.4 GiB free", Series(_ => 71));
+        Network = new MonitorMetric("↓ 1.2 MiB/s  ↑ 240 KiB/s", Series(i => 900_000 + 500_000 * Math.Sin(i / 6.0), i => 240_000 + 80_000 * Math.Cos(i / 5.0)));
+        TargetHost = "admin@build-01.example.com";
+        Status = "Live";
+        LastSample = now.ToString("T", CultureInfo.CurrentCulture);
+        Processes =
+        [
+            new(new RemoteProcess(1834, 1, "dotnet", "build", "R", 0, 812_000_000), 142.5),
+            new(new RemoteProcess(921, 1, "postgres", "postgres", "S", 0, 256_000_000), 12.0),
+            new(new RemoteProcess(1, 1, "systemd", "root", "S", 0, 12_000_000), 0.1),
+            new(new RemoteProcess(733, 1, "sshd", "root", "S", 0, 7_400_000), null),
+        ];
+        ProcessSummary = "4 processes";
     }
 
-    public void Start(ISshService sshService)
+    public void SetVisibility(bool activeTab, bool activeDashboard)
+    {
+        if (_activeTab == activeTab && _activeDashboard == activeDashboard) return;
+        bool tabChanged = _activeTab != activeTab;
+        _activeTab = activeTab;
+        _activeDashboard = activeDashboard;
+        _refreshRequested = false;
+        if (tabChanged)
+        {
+            _previousHost = null;
+            if (!activeTab) IsAvailable = false;
+        }
+        ResetDashboardSampling();
+        if (_activeDashboard && !IsPaused && Status == "Paused")
+            Status = "Refreshing host data…";
+        Wake();
+    }
+
+    public void Start(ISshService sshService, string targetHost)
     {
         Stop();
         _sshService = sshService;
-        _failureCount = 0;
-        _prevCpuTotal = _prevCpuIdle = 0;
-        _prevNetRx = _prevNetTx = -1;
-
-        _pollCts = new CancellationTokenSource();
-        _ = PollLoopAsync(_pollCts.Token);
+        TargetHost = targetHost;
+        _previousHost = null;
+        _cpuHistory.Clear();
+        _ramHistory.Clear();
+        _diskHistory.Clear();
+        _networkHistory.Clear();
+        Cpu = Memory = Disk = Network = EmptyMetric;
+        LastSample = Unknown;
+        Status = IsPaused ? "Paused" : "Waiting for host data…";
+        _connectionCts = new CancellationTokenSource();
+        ResetDashboardSampling();
+        _ = PollLoopAsync(sshService, _connectionCts.Token);
     }
 
     public void Stop()
     {
-        _pollCts?.Cancel();
-        _pollCts?.Dispose();
-        _pollCts = null;
         _sshService = null;
-        Dispatcher.UIThread.Post(() => IsAvailable = false);
+        Cancel(ref _connectionCts);
+        Cancel(ref _dashboardCts);
+        Cancel(ref _detailsCts);
+        _previousHost = null;
+        _refreshRequested = false;
+        _rows = [];
+        _processTicks.Clear();
+        ApplyProcessFilter();
+        IsAvailable = false;
+        CommandLine = "";
+        ProcessSummary = "No process data";
+        Status = "Not connected";
     }
 
-    private async Task PollLoopAsync(CancellationToken token)
+    partial void OnIsPausedChanged(bool value)
     {
-        while (!token.IsCancellationRequested)
+        ResetDashboardSampling();
+        if (_sshService is not null)
+            Status = value ? "Paused" : "Refreshing host data…";
+        Wake();
+    }
+
+    partial void OnProcessFilterChanged(string value) => ApplyProcessFilter();
+
+    partial void OnSelectedProcessChanged(MonitorProcessRow? oldValue, MonitorProcessRow? newValue)
+    {
+        if (_publishingRows || SameProcess(oldValue, newValue)) return;
+        Cancel(ref _detailsCts);
+        CommandLine = "";
+        if (newValue is null || !_activeDashboard || _sshService is not { } service || _dashboardCts is null) return;
+        _detailsCts = CancellationTokenSource.CreateLinkedTokenSource(_dashboardCts.Token);
+        CommandLine = "Loading command line…";
+        _ = LoadDetailsAsync(service, newValue.Process, _detailsCts.Token);
+    }
+
+    [RelayCommand]
+    private void Refresh()
+    {
+        if (!_activeDashboard || _sshService is null) return;
+        _refreshRequested = true;
+        Wake();
+    }
+
+    public void SortProcesses(string property)
+    {
+        if (_sortBy == property) _sortDirection *= -1;
+        else
         {
-            var service = _sshService;
-            if (service is null || !service.IsConnected)
+            _sortBy = property;
+            _sortDirection = property is nameof(MonitorProcessRow.Cpu) or nameof(MonitorProcessRow.ResidentBytes) ? -1 : 1;
+        }
+        ApplyProcessFilter();
+    }
+
+    private async Task PollLoopAsync(ISshService service, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
             {
-                Dispatcher.UIThread.Post(() => IsAvailable = false);
+                if (!_activeTab)
+                {
+                    await _wake.WaitAsync(token);
+                    continue;
+                }
+
+                var dashboard = _dashboardCts;
+                bool manual = _refreshRequested;
+                _refreshRequested = false;
+                bool showSample = _activeDashboard && (!IsPaused || manual);
+                var host = await ReadAsync(service, LinuxSystemMetrics.HostCommand, 256 * 1024, token);
+                if (token.IsCancellationRequested) return;
+                if (_activeTab)
+                    PublishHost(host, showSample && dashboard == _dashboardCts && _activeDashboard);
+
+                if (showSample && dashboard is not null && dashboard == _dashboardCts && IsAvailable)
+                    await SampleProcessesAsync(service, dashboard.Token);
+
+                await _wake.WaitAsync(PollInterval, token);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void PublishHost(SshCommandResult result, bool updateDashboard)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (result.Outcome != SshCommandOutcome.Completed || result.ExitStatus != 0)
+        {
+            IsAvailable = false;
+            _previousHost = null;
+            _processTicks.Clear();
+            _processTimestamp = 0;
+            if (!updateDashboard) return;
+            Status = result.ExitStatus == 42
+                ? "Linux /proc metrics are unavailable on this host"
+                : $"{DescribeFailure(result)}. Displayed data may be out of date.";
+            AppendHistory(now, null, null, null, null);
+            return;
+        }
+
+        var counters = LinuxSystemMetrics.ParseHost(result.Output);
+        long stamp = Stopwatch.GetTimestamp();
+        var cpu = LinuxSystemMetrics.CpuPercent(_previousHost, counters);
+        var rate = LinuxSystemMetrics.NetworkRate(_previousHost, counters, Stopwatch.GetElapsedTime(_hostTimestamp, stamp).TotalSeconds);
+        var memory = counters.Memory;
+        var disk = counters.Disk;
+        _previousHost = counters;
+        _hostTimestamp = stamp;
+        IsAvailable = counters.Cpu is not null || memory is not null || disk is not null || counters.Network.Count != 0;
+        CpuPercent = cpu ?? 0;
+        CpuDisplay = DisplayPercent(cpu);
+        RamPercent = memory is { } mem ? 100d * mem.Used / mem.Total : 0;
+        RamPercentDisplay = DisplayPercent(memory is not null ? RamPercent : null);
+        RamDisplay = memory is { } available ? $"{FormatBytes(available.Used)} / {FormatBytes(available.Total)}" : Unknown;
+        DiskPercent = disk?.Percent ?? 0;
+        DiskPercentDisplay = DisplayPercent(disk?.Percent);
+        DiskDisplay = disk is { } fs ? $"{FormatBytes(fs.Available)} available / {FormatBytes(fs.Total)}" : Unknown;
+        NetworkDownDisplay = rate is { } speeds ? $"{FormatBytes(speeds.Received)}/s" : Unknown;
+        NetworkUpDisplay = rate is { } upload ? $"{FormatBytes(upload.Sent)}/s" : Unknown;
+        if (!updateDashboard) return;
+
+        LastSample = now.ToLocalTime().ToString("T", CultureInfo.CurrentCulture);
+        Status = IsPaused ? "Paused · refreshed" : IsAvailable ? "Live" : "Host metrics unavailable";
+        AppendHistory(now, cpu, memory is null ? null : RamPercent, disk?.Percent, rate);
+    }
+
+    private void AppendHistory(DateTimeOffset now, double? cpu, double? memory, double? disk, (double Received, double Sent)? network)
+    {
+        Cpu = UpdateMetric(_cpuHistory, new(now, cpu), cpu is null ? Unknown : CpuDisplay);
+        Memory = UpdateMetric(_ramHistory, new(now, memory), memory is null ? Unknown : RamDisplay);
+        Disk = UpdateMetric(_diskHistory, new(now, disk), disk is null ? Unknown : DiskDisplay);
+        Network = UpdateMetric(_networkHistory, new(now, network?.Received, network?.Sent),
+            network is null ? Unknown : $"↓ {NetworkDownDisplay}   ↑ {NetworkUpDisplay}");
+    }
+
+    private static MonitorMetric UpdateMetric(List<MonitorPoint> history, MonitorPoint point, string display)
+    {
+        history.RemoveAll(value => value.Time < point.Time - HistoryLength);
+        if (history.Count > 0 && point.Time - history[^1].Time > 3 * PollInterval)
+            history.Add(new(point.Time - PollInterval, null));
+        history.Add(point);
+        return new MonitorMetric(display, history.ToArray());
+    }
+
+    private async Task SampleProcessesAsync(ISshService service, CancellationToken token)
+    {
+        try
+        {
+            var result = await ReadAsync(service, LinuxSystemMetrics.ProcessCommand, 4 * 1024 * 1024, token);
+            token.ThrowIfCancellationRequested();
+            if (result.Outcome != SshCommandOutcome.OutputLimitExceeded &&
+                (result.Outcome != SshCommandOutcome.Completed || result.ExitStatus != 0))
+            {
+                ResetProcessCounters();
+                ProcessSummary = $"{DescribeFailure(result)}. Process data may be out of date.";
+                return;
+            }
+            var sample = LinuxSystemMetrics.ParseProcesses(result.Output, result.Outcome == SshCommandOutcome.OutputLimitExceeded);
+            if (sample is not { } data)
+            {
+                ResetProcessCounters();
+                ProcessSummary = "Could not read process counters";
                 return;
             }
 
-            string? output = null;
-            try
+            long now = Stopwatch.GetTimestamp();
+            double elapsed = Stopwatch.GetElapsedTime(_processTimestamp, now).TotalSeconds;
+            var counters = new Dictionary<(int, long), long>(data.Rows.Count);
+            var rows = new List<MonitorProcessRow>(data.Rows.Count);
+            foreach (var process in data.Rows)
             {
-                output = await service.RunCommandAsync(StatCommand, token);
+                var id = (process.Pid, process.StartTime);
+                if (!counters.TryAdd(id, process.CpuTicks)) continue;
+                double? cpu = _processTimestamp != 0 && elapsed > 0 &&
+                    _processTicks.TryGetValue(id, out long previous) && process.CpuTicks >= previous
+                    ? 100d * (process.CpuTicks - previous) / data.ClockTicks / elapsed
+                    : null;
+                rows.Add(new MonitorProcessRow(process, cpu));
             }
-            catch
-            {
-                // treated as failure below
-            }
+            _processTicks = counters;
+            _processTimestamp = now;
+            _rows = rows;
+            ProcessSummary = rows.Count > 0
+                ? $"{rows.Count:N0} processes{(data.IsIncomplete ? " · incomplete snapshot" : "")}"
+                : "No readable processes";
+            ApplyProcessFilter();
+        }
+        catch (OperationCanceledException) { }
+    }
 
-            if (token.IsCancellationRequested) return;
+    private async Task LoadDetailsAsync(ISshService service, RemoteProcess process, CancellationToken token)
+    {
+        try
+        {
+            var result = await ReadAsync(service, LinuxSystemMetrics.ProcessDetailsCommand(process.Pid), 24 * 1024, token);
+            token.ThrowIfCancellationRequested();
+            string? text = result.Outcome == SshCommandOutcome.Completed && result.ExitStatus == 0
+                ? LinuxSystemMetrics.ParseCommandLine(result.Output, process)
+                : null;
+            CommandLine = string.IsNullOrEmpty(text) ? "Command line unavailable" : text;
+        }
+        catch (OperationCanceledException) { }
+    }
 
-            if (string.IsNullOrWhiteSpace(output) || !output.Contains("cpu "))
-            {
-                if (++_failureCount >= MaxConsecutiveFailures)
-                {
-                    Dispatcher.UIThread.Post(() => IsAvailable = false);
-                    return; // host has no /proc – give up silently
-                }
-            }
-            else
-            {
-                _failureCount = 0;
-                ParseAndPublish(output);
-            }
+    private async Task<SshCommandResult> ReadAsync(ISshService service, string command, int limit, CancellationToken token)
+    {
+        await _commands.WaitAsync(token);
+        try { return await service.RunBoundedCommandAsync(command, limit, SampleTimeout, token); }
+        finally { _commands.Release(); }
+    }
 
-            try { await Task.Delay(PollInterval, token); }
-            catch (OperationCanceledException) { return; }
+    private void ApplyProcessFilter()
+    {
+        var previousSelection = SelectedProcess;
+        var query = ProcessFilter?.Trim() ?? "";
+        IEnumerable<MonitorProcessRow> matching = _rows;
+        if (query.Length > 0)
+        {
+            matching = matching.Where(row =>
+                row.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                row.User.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                row.Pid.ToString(CultureInfo.InvariantCulture).Contains(query, StringComparison.Ordinal));
+        }
+
+        var rows = matching.ToList();
+        rows.Sort(CompareRows);
+        _publishingRows = true;
+        try
+        {
+            Processes = rows;
+            SelectedProcess = rows.FirstOrDefault(row => SameProcess(previousSelection, row));
+        }
+        finally { _publishingRows = false; }
+
+        if (previousSelection is not null && SelectedProcess is null)
+        {
+            Cancel(ref _detailsCts);
+            CommandLine = "";
         }
     }
 
-    private void ParseAndPublish(string output)
+    private int CompareRows(MonitorProcessRow first, MonitorProcessRow second)
     {
-        double? cpu = null, ram = null, disk = null;
-        string ramText = "—", netDown = "—", netUp = "—", diskText = "—";
-
-        long memTotal = 0, memAvailable = -1;
-        long netRx = 0, netTx = 0;
-        bool netFound = false;
-        bool inDf = false;
-
-        foreach (var rawLine in output.Split('\n'))
+        int primary = _sortBy switch
         {
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-
-            if (line.StartsWith("==DF==", StringComparison.Ordinal)) { inDf = true; continue; }
-
-            if (inDf)
-            {
-                // Filesystem 1024-blocks Used Available Capacity Mounted-on
-                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 5 && parts[4].EndsWith('%') &&
-                    double.TryParse(parts[4].TrimEnd('%'), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
-                {
-                    disk = pct;
-                    if (long.TryParse(parts[1], out var totalKb) && long.TryParse(parts[2], out var usedKb))
-                        diskText = $"{FormatBytes(usedKb * 1024L)} / {FormatBytes(totalKb * 1024L)}";
-                    else
-                        diskText = $"{pct:0}%";
-                }
-                continue;
-            }
-
-            if (line.StartsWith("cpu ", StringComparison.Ordinal))
-            {
-                // cpu user nice system idle iowait irq softirq steal ...
-                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                long total = 0, idle = 0;
-                for (int i = 1; i < parts.Length && i <= 8; i++)
-                {
-                    if (!long.TryParse(parts[i], out var v)) continue;
-                    total += v;
-                    if (i == 4 || i == 5) idle += v; // idle + iowait
-                }
-
-                if (_prevCpuTotal > 0 && total > _prevCpuTotal)
-                {
-                    var totalDelta = total - _prevCpuTotal;
-                    var idleDelta = idle - _prevCpuIdle;
-                    cpu = Math.Clamp(100.0 * (totalDelta - idleDelta) / totalDelta, 0, 100);
-                }
-                _prevCpuTotal = total;
-                _prevCpuIdle = idle;
-            }
-            else if (line.StartsWith("MemTotal:", StringComparison.Ordinal))
-            {
-                memTotal = ParseMemInfoKb(line);
-            }
-            else if (line.StartsWith("MemAvailable:", StringComparison.Ordinal))
-            {
-                memAvailable = ParseMemInfoKb(line);
-            }
-            else if (line.Contains(':') && !line.StartsWith("Inter-", StringComparison.Ordinal) &&
-                     !line.StartsWith("face", StringComparison.Ordinal))
-            {
-                // /proc/net/dev data line: "eth0: rxBytes rxPackets ... txBytes ..."
-                var colonIdx = line.IndexOf(':');
-                var iface = line[..colonIdx].Trim();
-                if (iface == "lo") continue;
-
-                var fields = line[(colonIdx + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (fields.Length >= 16 &&
-                    long.TryParse(fields[0], out var rx) &&
-                    long.TryParse(fields[8], out var tx))
-                {
-                    netRx += rx;
-                    netTx += tx;
-                    netFound = true;
-                }
-            }
-        }
-
-        // RAM
-        if (memTotal > 0 && memAvailable >= 0)
-        {
-            var usedKb = memTotal - memAvailable;
-            ram = Math.Clamp(100.0 * usedKb / memTotal, 0, 100);
-            ramText = $"{FormatBytes(usedKb * 1024L)} / {FormatBytes(memTotal * 1024L)}";
-        }
-
-        // Network rates from deltas
-        var now = DateTime.UtcNow;
-        if (netFound && _prevNetRx >= 0)
-        {
-            var seconds = Math.Max(0.5, (now - _prevNetSample).TotalSeconds);
-            var rxRate = Math.Max(0, netRx - _prevNetRx) / seconds;
-            var txRate = Math.Max(0, netTx - _prevNetTx) / seconds;
-            netDown = $"{FormatBytes((long)rxRate)}/s";
-            netUp = $"{FormatBytes((long)txRate)}/s";
-        }
-        if (netFound)
-        {
-            _prevNetRx = netRx;
-            _prevNetTx = netTx;
-            _prevNetSample = now;
-        }
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            IsAvailable = true;
-            if (cpu.HasValue) CpuPercent = cpu.Value;
-            if (ram.HasValue) { RamPercent = ram.Value; RamDisplay = ramText; }
-            if (netFound && _prevNetRx >= 0) { NetworkDownDisplay = netDown; NetworkUpDisplay = netUp; }
-            if (disk.HasValue) { DiskPercent = disk.Value; DiskDisplay = diskText; }
-        });
+            nameof(MonitorProcessRow.Pid) => first.Pid.CompareTo(second.Pid),
+            nameof(MonitorProcessRow.Name) => StringComparer.OrdinalIgnoreCase.Compare(first.Name, second.Name),
+            nameof(MonitorProcessRow.User) => StringComparer.OrdinalIgnoreCase.Compare(first.User, second.User),
+            nameof(MonitorProcessRow.State) => StringComparer.Ordinal.Compare(first.State, second.State),
+            nameof(MonitorProcessRow.ResidentBytes) => Nullable.Compare(first.ResidentBytes, second.ResidentBytes),
+            _ => Nullable.Compare(first.Cpu, second.Cpu)
+        };
+        return primary == 0 ? first.Pid.CompareTo(second.Pid) : _sortDirection * Math.Sign(primary);
     }
 
-    private static long ParseMemInfoKb(string line)
+    private static bool SameProcess(MonitorProcessRow? first, MonitorProcessRow? second) =>
+        first is not null && second is not null && first.Pid == second.Pid && first.StartTime == second.StartTime;
+
+    private void ResetDashboardSampling()
     {
-        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 && long.TryParse(parts[1], out var kb) ? kb : 0;
+        Cancel(ref _detailsCts);
+        Cancel(ref _dashboardCts);
+        if (_connectionCts is not null)
+            _dashboardCts = CancellationTokenSource.CreateLinkedTokenSource(_connectionCts.Token);
+        ResetProcessCounters();
+        if (CommandLine == "Loading command line…") CommandLine = "";
     }
 
-    private static string FormatBytes(long bytes)
+    private void ResetProcessCounters()
     {
-        const double kb = 1024, mb = kb * 1024, gb = mb * 1024, tb = gb * 1024;
+        _processTicks.Clear();
+        _processTimestamp = 0;
+    }
+
+    private void Wake()
+    {
+        if (_wake.CurrentCount == 0) _wake.Release();
+    }
+
+    private static void Cancel(ref CancellationTokenSource? source)
+    {
+        if (source is null) return;
+        var current = source;
+        source = null;
+        // SSH.NET's cancellation callback can send a signal and briefly wait on the server.
+        _ = CancelAsync(current);
+    }
+
+    private static async Task CancelAsync(CancellationTokenSource source)
+    {
+        try { await source.CancelAsync().ConfigureAwait(false); }
+        finally { source.Dispose(); }
+    }
+
+    private static string DescribeFailure(SshCommandResult result) => result.Outcome switch
+    {
+        SshCommandOutcome.TimedOut => "Host query timed out",
+        SshCommandOutcome.OutputLimitExceeded => "Host query exceeded the output limit",
+        SshCommandOutcome.Unavailable => "SSH command channel unavailable",
+        _ when result.ExitStatus == 43 => "Required Linux process counters are unavailable",
+        _ => "Host query failed"
+    };
+
+    private static string DisplayPercent(double? value) => value is double percent ? $"{percent:0}%" : Unknown;
+
+    public static string FormatBytes(double bytes)
+    {
+        const double KiB = 1024;
+        const double MiB = KiB * 1024;
+        const double GiB = MiB * 1024;
+        const double TiB = GiB * 1024;
         return bytes switch
         {
-            < 0 => "0 B",
-            < 1024 => $"{bytes} B",
-            _ when bytes < mb => $"{bytes / kb:0.0} KB",
-            _ when bytes < gb => $"{bytes / mb:0.0} MB",
-            _ when bytes < tb => $"{bytes / gb:0.0} GB",
-            _ => $"{bytes / tb:0.00} TB"
+            < KiB => $"{bytes:0} B",
+            < MiB => $"{bytes / KiB:0.0} KiB",
+            < GiB => $"{bytes / MiB:0.0} MiB",
+            < TiB => $"{bytes / GiB:0.0} GiB",
+            _ => $"{bytes / TiB:0.00} TiB"
         };
     }
 

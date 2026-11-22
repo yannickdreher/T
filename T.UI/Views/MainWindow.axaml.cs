@@ -155,7 +155,7 @@ public partial class MainWindow : FAAppWindow
 
         var items = new List<Control>
         {
-            new MenuItem { Header = "New session…", Icon = MenuIcon("plug_connected_add_regular"), Command = sessions.NewSessionCommand },
+            new MenuItem { Header = "New terminal profile…", Icon = MenuIcon("plug_connected_add_regular"), Command = sessions.NewSessionCommand },
             new Separator()
         };
         items.AddRange(BuildSessionItems(sessions, parentFolderId: null));

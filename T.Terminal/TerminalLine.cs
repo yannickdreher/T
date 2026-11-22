@@ -10,6 +10,9 @@ public class TerminalLine
     private TerminalCharacter[] _characters;
 
     public int Length => _characters.Length;
+
+    /// <summary>Changes when character cells are rewritten, cleared or resized.</summary>
+    public int Revision { get; private set; }
     public bool DoubleWidth { get; set; }
     public bool DoubleHeightTop { get; set; }
     public bool DoubleHeightBottom { get; set; }
@@ -23,12 +26,18 @@ public class TerminalLine
     public TerminalCharacter this[int index]
     {
         get => index >= 0 && index < _characters.Length ? _characters[index] : TerminalCharacter.Blank;
-        set { if (index >= 0 && index < _characters.Length) _characters[index] = value; }
+        set
+        {
+            if (index < 0 || index >= _characters.Length) return;
+            _characters[index] = value;
+            Revision++;
+        }
     }
 
     public void Clear()
     {
         Array.Fill(_characters, TerminalCharacter.Blank);
+        Revision++;
         DoubleWidth = false;
         DoubleHeightTop = false;
         DoubleHeightBottom = false;
@@ -38,6 +47,7 @@ public class TerminalLine
     {
         for (int i = startColumn; i <= endColumn && i < _characters.Length; i++)
             _characters[i] = TerminalCharacter.Blank;
+        Revision++;
     }
 
     public void Resize(int newWidth)
@@ -46,6 +56,7 @@ public class TerminalLine
         Array.Fill(newChars, TerminalCharacter.Blank);
         Array.Copy(_characters, newChars, Math.Min(_characters.Length, newWidth));
         _characters = newChars;
+        Revision++;
         if (newWidth > 0) RepairWide(newWidth - 1); // a wide character cut in half at the new right edge
     }
 
@@ -77,6 +88,7 @@ public class TerminalLine
         Array.Copy(_characters, column, _characters, column + count, _characters.Length - column - count);
         Array.Fill(_characters, TerminalCharacter.Blank, column, count);
         RepairWide(_characters.Length - 1); // the right half may have been pushed off the line
+        Revision++;
     }
 
     public void DeleteCharacters(int column, int count)
@@ -90,6 +102,7 @@ public class TerminalLine
         Array.Copy(_characters, column + count, _characters, column, _characters.Length - column - count);
         Array.Fill(_characters, TerminalCharacter.Blank, _characters.Length - count, count);
         RepairWide(column); // the right half of a deleted wide character may have moved here
+        Revision++;
     }
 
     /// <summary>Erases a wide-character half at <paramref name="column"/> whose partner cell is missing.</summary>
@@ -109,6 +122,7 @@ public class TerminalLine
         ref var cell = ref _characters[column];
         cell.CodePoint = ' ';
         cell.Attributes &= ~WideFlags;
+        Revision++;
     }
 
     public TerminalLine Clone()

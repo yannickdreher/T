@@ -241,6 +241,8 @@ public partial class TerminalSettingsViewModel : ObservableValidator
 
     [ObservableProperty] private bool _cursorBlink = true;
 
+    [ObservableProperty] private bool _commandSuggestions = true;
+
     [Range(0, 32, ErrorMessage = "Terminal padding must be between 0 and 32.")]
     [ObservableProperty] private int _terminalPadding = 10;
 
@@ -260,6 +262,7 @@ public partial class TerminalSettingsViewModel : ObservableValidator
         _terminalForeground = settings.TerminalForeground;
         _scrollbackLines = settings.ScrollbackLines;
         _cursorBlink = settings.CursorBlink;
+        _commandSuggestions = settings.CommandSuggestions;
         _terminalPadding = settings.TerminalPadding;
         ValidateAllProperties();
     }
@@ -275,6 +278,7 @@ public partial class TerminalSettingsViewModel : ObservableValidator
         target.TerminalForeground = TerminalForeground;
         target.ScrollbackLines = ScrollbackLines;
         target.CursorBlink = CursorBlink;
+        target.CommandSuggestions = CommandSuggestions;
         target.TerminalPadding = TerminalPadding;
     }
 

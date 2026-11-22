@@ -23,5 +23,6 @@
         <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
         <StyleInclude Source="avares://T/Styles/AppStyles.axaml" />
+        <StyleInclude Source="avares://T/Styles/SessionTabs.axaml" />
     </Application.Styles>
 </Application>

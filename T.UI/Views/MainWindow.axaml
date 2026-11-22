@@ -4,7 +4,6 @@
                  xmlns:components="using:T.UI.Views.Components"
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-                 xmlns:svg="using:Avalonia.Svg.Skia"
                  xmlns:ui="using:FluentAvalonia.UI.Controls"
                  xmlns:vm="using:T.UI.ViewModels"
                  xmlns:wnd="using:FluentAvalonia.UI.Windowing"
@@ -33,7 +32,7 @@
                     Spacing="6">
             <Image Width="20"
                    Height="20"
-                   Source="avares://T/Assets/logo.ico" />
+                   Source="avares://T/Assets/logo-v3.png" />
             <Menu VerticalAlignment="Center">
                 <Menu.Styles>
                     <Style Selector="MenuItem">
@@ -46,31 +45,74 @@
             </Menu>
         </StackPanel>
 
-        <Grid Grid.Row="1" ColumnDefinitions="300,Auto,*">
-            <!--  Sidebar: saved sessions  -->
-            <components:SessionsPanel Grid.Column="0" DataContext="{Binding SessionsTree}" />
+        <Grid Grid.Row="1" ColumnDefinitions="42,300,Auto,*">
+            <!--  Activity bar: switches the sidebar between terminal profiles and tunnels  -->
+            <Border Grid.Column="0"
+                    Margin="0,0,4,0"
+                    Classes="Panel">
+                <StackPanel Margin="3,5" Spacing="4">
+                    <Button AutomationProperties.Name="Terminals"
+                            Classes="activity"
+                            Classes.active="{Binding !ShowTunnels}"
+                            Command="{Binding ShowTerminalsCommand}"
+                            ToolTip.Tip="Terminals">
+                        <Panel>
+                            <Border Classes="activityIndicator" />
+                            <PathIcon Data="{StaticResource window_console_regular}" />
+                        </Panel>
+                    </Button>
+                    <Button AutomationProperties.Name="Tunnels"
+                            Classes="activity"
+                            Classes.active="{Binding ShowTunnels}"
+                            Command="{Binding OpenTunnelsCommand}"
+                            ToolTip.Tip="Tunnels">
+                        <Panel>
+                            <Border Classes="activityIndicator" />
+                            <PathIcon Data="{StaticResource plug_connected_regular}" />
+                            <!--  Number of active tunnels, visible from the terminals view as well  -->
+                            <Border Classes="activityBadge"
+                                    IsVisible="{Binding TunnelsWorkspace.HasActiveTunnels}"
+                                    ToolTip.Tip="Active tunnels">
+                                <TextBlock Text="{Binding TunnelsWorkspace.ActiveCount}" />
+                            </Border>
+                        </Panel>
+                    </Button>
+                </StackPanel>
+            </Border>
 
-            <GridSplitter Grid.Column="1"
+            <Panel Grid.Column="1" IsVisible="{Binding !ShowTunnels}">
+                <components:TerminalsPanel DataContext="{Binding SessionsTree}" />
+            </Panel>
+
+            <GridSplitter Grid.Column="2"
+                          IsVisible="{Binding !ShowTunnels}"
                           ResizeBehavior="PreviousAndNext"
                           ResizeDirection="Columns" />
 
-            <Panel Grid.Column="2">
+            <!--  Terminal tabs (hidden, not closed, while the tunnels are shown)  -->
+            <Panel Grid.Column="3" IsVisible="{Binding !ShowTunnels}">
                 <!--
-                    Session tabs. The strip lies on the window background; the selected tab merges into
-                    the session surface below it (SessionView). SessionViewCache keeps one SessionView per
-                    session so the live terminal survives tab switches.
+                    Session tabs (styled in Styles/SessionTabs.axaml). The strip lies on the window background;
+                    the selected tab merges into the content below it: into the terminal (terminal colours) while
+                    it is shown, otherwise into the session surface (SessionView). Tabs share the width like in
+                    Windows Terminal. SessionViewCache keeps one SessionView per session so the live terminal
+                    survives tab switches.
                 -->
                 <ui:FATabView x:Name="SessionTabs"
                               CanReorderTabs="True"
-                              CloseButtonOverlayMode="OnPointerOver"
+                              Classes.terminal="{Binding SessionsTree.ActiveSession.SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0, FallbackValue=False}"
+                              CloseButtonOverlayMode="Auto"
                               IsAddTabButtonVisible="True"
                               IsVisible="{Binding SessionsTree.HasOpenSessions}"
                               SelectedItem="{Binding SessionsTree.ActiveSession}"
                               TabItemsSource="{Binding SessionsTree.OpenSessions}"
-                              TabWidthMode="SizeToContent">
+                              TabWidthMode="Equal">
                     <ui:FATabView.TabStripFooter>
-                        <!--  Terminal / file explorer of the active session  -->
-                        <ListBox Margin="12,0,2,4"
+                        <!--
+                            Workspace of the active SSH session. No vertical margin: a footer taller than
+                            the tabs (33px) makes the strip taller and leaves a gap below the selected tab.
+                        -->
+                        <ListBox Margin="12,0,2,0"
                                  HorizontalAlignment="Right"
                                  VerticalAlignment="Center"
                                  Classes="segmented"
@@ -86,6 +128,12 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <PathIcon Classes="small" Data="{StaticResource folder_open_regular}" />
                                     <TextBlock VerticalAlignment="Center" Text="Files" />
+                                </StackPanel>
+                            </ListBoxItem>
+                            <ListBoxItem ToolTip.Tip="Remote system monitor">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Classes="small" Data="{StaticResource pulse_regular}" />
+                                    <TextBlock VerticalAlignment="Center" Text="Monitor" />
                                 </StackPanel>
                             </ListBoxItem>
                         </ListBox>
@@ -114,10 +162,10 @@
                     <StackPanel HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Spacing="10">
-                        <svg:Svg Width="120"
-                                 Height="120"
-                                 Margin="0,0,0,8"
-                                 Path="/Assets/logo.svg" />
+                        <Image Width="120"
+                               Height="120"
+                               Margin="0,0,0,8"
+                               Source="avares://T/Assets/logo-v3.png" />
                         <TextBlock HorizontalAlignment="Center"
                                    FontSize="24"
                                    FontWeight="SemiBold"
@@ -133,7 +181,7 @@
                                 Command="{Binding SessionsTree.NewSessionCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <PathIcon Classes="small" Data="{StaticResource plug_connected_add_regular}" />
-                                <TextBlock Text="New session" />
+                                <TextBlock Text="New terminal profile" />
                             </StackPanel>
                         </Button>
                         <Border Margin="0,16,0,0"
@@ -160,6 +208,13 @@
                         </Border>
                     </StackPanel>
                 </Border>
+            </Panel>
+
+            <!--  Tunnels: list with state and traffic, details of the selected tunnel (full width)  -->
+            <Panel Grid.Column="1"
+                   Grid.ColumnSpan="3"
+                   IsVisible="{Binding ShowTunnels}">
+                <components:TunnelsWorkspaceView DataContext="{Binding TunnelsWorkspace}" />
             </Panel>
         </Grid>
     </Grid>

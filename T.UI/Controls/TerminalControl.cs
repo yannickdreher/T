@@ -23,7 +23,7 @@ public enum TerminalCursorStyle { Block, Bar, Underline }
 /// cursor live on separate child visuals - cursor blinking and selection drags
 /// therefore never trigger a full text repaint.
 /// </summary>
-public class TerminalControl : Control
+public partial class TerminalControl : Control
 {
     private VirtualTerminal? _terminal;
     private double _charWidth;
@@ -53,9 +53,13 @@ public class TerminalControl : Control
     // Rendering is scheduled once per compositor frame (vsync) while the emulator reports damage.
     private bool _frameRequested;
 
-    // Overlay layers (selection below cursor, both above text)
+    // Overlay layers (selection, inline suggestion, cursor - all above the text)
     private readonly OverlayLayer _selectionLayer;
+    private readonly OverlayLayer _suggestionLayer;
     private readonly OverlayLayer _cursorLayer;
+
+    // Inline command suggestion drawn dimmed after the cursor (null = none).
+    private string? _inlineSuggestion;
 
     private sealed class OverlayLayer : Control
     {
@@ -224,6 +228,49 @@ public class TerminalControl : Control
     public event Action<string>? InputReceived;
     public event Action<string>? TitleChanged;
 
+    /// <summary>
+    /// Raised for every key before the terminal handles it; setting Handled keeps the key
+    /// from the host (used by the command suggestions).
+    /// </summary>
+    public event EventHandler<KeyEventArgs>? KeyIntercept;
+
+    /// <summary>Raised once per rendered frame after new output was applied to the screen.</summary>
+    public event Action? ScreenUpdated;
+
+    /// <summary>The emulator (null until the control was laid out the first time).</summary>
+    public VirtualTerminal? Emulator => _terminal;
+
+    /// <summary>The viewport shows the live screen (not scrolled back).</summary>
+    public bool IsAtLiveScreen => _scrollOffset == 0;
+
+    /// <summary>The control has keyboard focus.</summary>
+    public bool HasKeyboardFocus => _hasFocus;
+
+    /// <summary>Text drawn dimmed after the cursor (fish-style inline suggestion); null hides it.</summary>
+    public string? InlineSuggestion
+    {
+        get => _inlineSuggestion;
+        set
+        {
+            if (_inlineSuggestion == value) return;
+            _inlineSuggestion = value;
+            _suggestionLayer.InvalidateVisual();
+        }
+    }
+
+    /// <summary>Sends text to the host as if it was typed.</summary>
+    public void SendText(string text)
+    {
+        if (string.IsNullOrEmpty(text) || _isShutdown) return;
+        if (_scrollOffset != 0) SetScrollOffset(0);
+        InputReceived?.Invoke(text);
+        RestartCursorBlink();
+    }
+
+    /// <summary>Rectangle of a screen cell in control coordinates.</summary>
+    public Rect GetCellRect(int column, int row) =>
+        new(Padding.Left + column * _charWidth, Padding.Top + row * _lineHeight, _charWidth, _lineHeight);
+
     public TerminalControl()
     {
         Focusable = true;
@@ -231,10 +278,13 @@ public class TerminalControl : Control
         ClipToBounds = true;
 
         _selectionLayer = new OverlayLayer(RenderSelection);
+        _suggestionLayer = new OverlayLayer(RenderInlineSuggestion);
         _cursorLayer = new OverlayLayer(RenderCursor);
         VisualChildren.Add(_selectionLayer);
+        VisualChildren.Add(_suggestionLayer);
         VisualChildren.Add(_cursorLayer);
         LogicalChildren.Add(_selectionLayer);
+        LogicalChildren.Add(_suggestionLayer);
         LogicalChildren.Add(_cursorLayer);
 
         // Cursor blink only repaints the tiny cursor layer - not the text.
@@ -247,6 +297,7 @@ public class TerminalControl : Control
 
         _inputTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(InputProcessIntervalMs) };
         _inputTimer.Tick += (_, _) => ProcessInputBuffer();
+        _searchTimer.Tick += (_, _) => ProcessSearch();
 
         // Without a client Avalonia disables the IME for this control and CJK input is impossible.
         _inputMethodClient = new TerminalInputMethodClient(this);
@@ -457,6 +508,7 @@ public class TerminalControl : Control
         base.OnAttachedToVisualTree(e);
         _isAttached = true;
         UpdateMetrics();
+        ScheduleSearch();
 
         // The session may have produced output while this control was detached
         // (e.g. its tab was in the background). The VirtualTerminal stayed current
@@ -483,6 +535,7 @@ public class TerminalControl : Control
 
         // Stop rendering-related timers - there is nothing to paint while detached.
         _cursorBlinkTimer.Stop();
+        _searchTimer.Stop();
 
         // NOTE: the input timer is intentionally left running so the VirtualTerminal
         // keeps consuming SSH output while the tab is backgrounded. It is stopped
@@ -493,6 +546,7 @@ public class TerminalControl : Control
     {
         if (_charWidth <= 0 || _lineHeight <= 0) UpdateMetrics();
         _selectionLayer.Measure(availableSize);
+        _suggestionLayer.Measure(availableSize);
         _cursorLayer.Measure(availableSize);
         return availableSize;
     }
@@ -501,6 +555,7 @@ public class TerminalControl : Control
     {
         var layerRect = new Rect(finalSize);
         _selectionLayer.Arrange(layerRect);
+        _suggestionLayer.Arrange(layerRect);
         _cursorLayer.Arrange(layerRect);
 
         if (finalSize.Width <= 10 || finalSize.Height <= 10) return finalSize;
@@ -561,6 +616,7 @@ public class TerminalControl : Control
 
         _cursorBlinkTimer.Stop();
         _inputTimer.Stop();
+        ClearSearch();
 
         lock (_incomingLock)
         {
@@ -597,6 +653,12 @@ public class TerminalControl : Control
 
     private void OnTerminalScreenChanged()
     {
+        if (_searchIndex != null)
+        {
+            _searchDirty = true;
+            ScheduleSearch();
+        }
+
         // Only schedule frames while visible; a detached control repaints fully on re-attach.
         if (!_isAttached || _isShutdown || _frameRequested) return;
 
@@ -621,18 +683,23 @@ public class TerminalControl : Control
         _lastScrollbackLinesAdded = terminal.ScrollbackLinesAdded;
 
         // Scrolled back: keep showing the same history lines instead of drifting with the output.
-        if (_scrollOffset > 0)
+        if (terminal.IsAlternateScreen)
+            SetScrollOffset(0);
+        else if (_scrollOffset > 0)
             _scrollOffset = (int)Math.Clamp(_scrollOffset + added, 0, terminal.Scrollback.Count);
 
         if (_renderer.ApplyDamage(terminal, viewportDetached: _scrollOffset > 0))
         {
             InvalidateVisual();
-            if (_hasSelectionRange || _isSelecting) _selectionLayer.InvalidateVisual();
+            if (_hasSelectionRange || _isSelecting || _searchIndex != null) _selectionLayer.InvalidateVisual();
         }
 
         // The cursor may have moved without any cell change.
         _cursorLayer.InvalidateVisual();
         _inputMethodClient.NotifyCursorMoved();
+
+        ScreenUpdated?.Invoke();
+        if (_inlineSuggestion != null) _suggestionLayer.InvalidateVisual();
     }
 
     #endregion
@@ -725,6 +792,49 @@ public class TerminalControl : Control
         }
     }
 
+    // ----- Inline suggestion layer -----
+
+    private void RenderInlineSuggestion(DrawingContext context)
+    {
+        var terminal = _terminal;
+        var text = _inlineSuggestion;
+        if (terminal == null || string.IsNullOrEmpty(text) || _scrollOffset != 0) return;
+
+        // Dimmed: a little less than halfway between text and background.
+        var fg = DefaultForeground;
+        var bg = DefaultBackground;
+        var color = Color.FromRgb(
+            (byte)((fg.R * 9 + bg.R * 11) / 20),
+            (byte)((fg.G * 9 + bg.G * 11) / 20),
+            (byte)((fg.B * 9 + bg.B * 11) / 20));
+
+        int width = terminal.Width;
+        int col = Math.Min(terminal.CursorColumn, width);
+        int row = terminal.CursorRow;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            int codePoint = char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])
+                ? char.ConvertToUtf32(text[i], text[++i])
+                : text[i];
+            int cells = UnicodeWidth.GetWidth(codePoint);
+            if (cells <= 0) continue;
+
+            // Wrap like the shell will when the text is typed.
+            if (col + cells > width)
+            {
+                col = 0;
+                row++;
+            }
+            if (row >= terminal.Height) break;
+
+            var cell = new TerminalCharacter { CodePoint = codePoint };
+            _renderer.DrawCell(context, cell, cells, terminal.Graphemes,
+                new Point(Padding.Left + col * _charWidth, Padding.Top + row * _lineHeight), color);
+            col += cells;
+        }
+    }
+
     private void RestartCursorBlink()
     {
         _cursorBlink = true;
@@ -744,6 +854,7 @@ public class TerminalControl : Control
 
     private void RenderSelection(DrawingContext context)
     {
+        RenderSearchHighlights(context);
         if (!_hasSelectionRange || _terminal == null) return;
 
         var (startAbs, startCol, endAbs, endCol) = OrderedSelection();
@@ -1193,6 +1304,7 @@ public class TerminalControl : Control
 
     private void SetScrollOffset(int newOffset)
     {
+        if (_terminal?.IsAlternateScreen == true) newOffset = 0;
         if (newOffset == _scrollOffset) return;
         _scrollOffset = newOffset;
         _renderer.InvalidateAll();
@@ -1207,6 +1319,21 @@ public class TerminalControl : Control
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control && SearchRequested != null)
+        {
+            _suppressedTextInput = e.KeySymbol;
+            e.Handled = true;
+            SearchRequested.Invoke();
+            return;
+        }
+
+        KeyIntercept?.Invoke(this, e);
+        if (e.Handled)
+        {
+            RestartCursorBlink();
+            return;
+        }
+
         var mods = e.KeyModifiers;
         var ctrl = mods.HasFlag(KeyModifiers.Control);
         var alt = mods.HasFlag(KeyModifiers.Alt);
@@ -1290,6 +1417,9 @@ public class TerminalControl : Control
 
         if (sequence != null)
         {
+            // Enter or Ctrl+C ends the command line: the shell is busy until its next prompt.
+            if (sequence is "\r" or "\n" or "\x03") _terminal?.NotifyCommandSubmitted();
+
             InputReceived?.Invoke(sequence);
             e.Handled = true;
 
@@ -1370,6 +1500,7 @@ public class TerminalControl : Control
                     text, _terminal?.BracketedPasteMode ?? false);
 
                 if (_scrollOffset != 0) SetScrollOffset(0);
+                if (text.Contains('\r')) _terminal?.NotifyCommandSubmitted();
                 InputReceived?.Invoke(text);
             }
         }

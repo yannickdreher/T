@@ -204,6 +204,15 @@
 
                         <CheckBox Content="Enable terminal colors" IsChecked="{Binding Terminal.EnableTerminalColors}" />
 
+                        <StackPanel Spacing="2">
+                            <CheckBox Content="Command suggestions" IsChecked="{Binding Terminal.CommandSuggestions}" />
+                            <TextBlock Margin="28,0,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Suggests commands from the server's history and commands while you type. In bash, T loads a small prompt hook (~/.cache/t/shell-integration.bash) into the session; other shells need OSC 133 prompt markers. Takes effect on the next connect."
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                             <StackPanel Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Background color" />

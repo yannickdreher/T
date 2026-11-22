@@ -5,9 +5,11 @@ using T.Models;
 
 namespace T.Services;
 
-public class SqliteSessionStorageService : ISessionStorageService
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "The tunnel gate uses no wait handle and must stay usable by leases released during SSH shutdown.")]
+public partial class SqliteSessionStorageService : ISessionStorageService, ILocalTunnelStore
 {
-    private const int SchemaVersion = 5;
+    private const int SchemaVersion = 8;
     private const string SessionColumns =
         "Id, Name, Host, Port, Username, Password, PrivateKeyPath, PrivateKeyPassword, FolderId, Description, ProxyJumpSessionId, StepProfileId";
 
@@ -78,6 +80,8 @@ public class SqliteSessionStorageService : ISessionStorageService
         AddColumnIfMissing(connection, "Sessions", "PrivateKeyPassword", "TEXT NOT NULL DEFAULT ''");
         AddColumnIfMissing(connection, "Sessions", "ProxyJumpSessionId", "TEXT");
         AddColumnIfMissing(connection, "Sessions", "StepProfileId", "TEXT");
+        AddColumnIfMissing(connection, "Sessions", "TunnelOwned", "INTEGER NOT NULL DEFAULT 0");
+        InitializeLocalTunnels(connection);
 
         // Previous versions re-created an empty "Hosts" table on every start.
         if (TableExists(connection, "Hosts") && Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM Hosts;"), CultureInfo.InvariantCulture) == 0)
@@ -85,6 +89,8 @@ public class SqliteSessionStorageService : ISessionStorageService
 
         if (GetUserVersion(connection) < 5)
             MigrateSecrets(connection);
+        if (GetUserVersion(connection) < 8)
+            MigrateTunnelsToProfiles(connection);
 
         Execute(connection, $"PRAGMA user_version = {SchemaVersion};");
         transaction.Commit();
@@ -186,7 +192,7 @@ public class SqliteSessionStorageService : ISessionStorageService
 
         await using var connection = CreateConnection();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT {SessionColumns} FROM Sessions;";
+        cmd.CommandText = $"SELECT {SessionColumns} FROM Sessions WHERE TunnelOwned = 0;";
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -209,7 +215,122 @@ public class SqliteSessionStorageService : ISessionStorageService
     public async Task AddSessionAsync(SshSession session)
     {
         await using var connection = CreateConnection();
+        await InsertSessionAsync(connection, null, session);
+    }
+
+    public async Task<IReadOnlyList<SshSession>> ImportSessionsAsync(IReadOnlyList<SshImportProfile> profiles, string? folderId)
+    {
+        if (profiles.Count == 0)
+            return [];
+
+        await using var connection = CreateConnection();
+        await using var transaction = connection.BeginTransaction(deferred: false);
+
+        if (folderId != null)
+        {
+            await using var folder = connection.CreateCommand();
+            folder.Transaction = transaction;
+            folder.CommandText = "SELECT 1 FROM Folders WHERE Id = @Id;";
+            folder.Parameters.AddWithValue("@Id", folderId);
+            if (await folder.ExecuteScalarAsync() is null)
+                throw new InvalidOperationException("The destination folder no longer exists.");
+        }
+
+        var available = new List<SshSession>();
+        var existingWithSecrets = new HashSet<string>(StringComparer.Ordinal);
+        await using (var load = connection.CreateCommand())
+        {
+            load.Transaction = transaction;
+            load.CommandText = """
+                SELECT Id, Name, Host, Port, Username, PrivateKeyPath, FolderId, ProxyJumpSessionId,
+                       StepProfileId, Password <> '' OR PrivateKeyPassword <> '' AS HasSecrets
+                FROM Sessions WHERE TunnelOwned = 0;
+                """;
+            await using var reader = await load.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var saved = new SshSession
+                {
+                    Id = reader.GetString(0),
+                    Name = reader.GetString(1),
+                    Host = reader.GetString(2),
+                    Port = reader.GetInt32(3),
+                    Username = reader.GetString(4),
+                    PrivateKeyPath = reader.GetString(5),
+                    FolderId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    ProxyJumpSessionId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    StepProfileId = reader.IsDBNull(8) ? null : reader.GetString(8)
+                };
+                if (reader.GetBoolean(9))
+                    existingWithSecrets.Add(saved.Id);
+                available.Add(saved);
+            }
+        }
+
+        var usedNames = available.Where(session => session.FolderId == folderId)
+            .Select(session => session.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in profiles)
+        {
+            if (string.IsNullOrWhiteSpace(profile.Session.Name) || !usedNames.Add(profile.Session.Name))
+                throw new InvalidOperationException($"A session named '{profile.Session.Name}' already exists in this selection or folder.");
+            if (profile.JumpHosts.Count > SshSession.MaxJumpHops)
+                throw new InvalidOperationException($"A session has more than {SshSession.MaxJumpHops} jump hosts.");
+        }
+
+        var inserted = new List<SshSession>();
+        foreach (var profile in profiles.OrderBy(profile => profile.JumpHosts.Count))
+        {
+            string? previousId = null;
+            foreach (var hop in profile.JumpHosts)
+            {
+                var matching = available.FirstOrDefault(saved =>
+                    !existingWithSecrets.Contains(saved.Id) && SameJumpConnection(saved, hop, previousId));
+                if (matching is null)
+                {
+                    var name = hop.Name;
+                    for (int suffix = 1; !usedNames.Add(name); suffix++)
+                        name = $"{hop.Name} (jump {suffix})";
+
+                    matching = CloneImportedSession(hop, name, folderId, previousId);
+                    await InsertSessionAsync(connection, transaction, matching);
+                    available.Add(matching);
+                    inserted.Add(matching);
+                }
+                previousId = matching.Id;
+            }
+
+            var target = CloneImportedSession(profile.Session, profile.Session.Name, folderId, previousId);
+            await InsertSessionAsync(connection, transaction, target);
+            available.Add(target);
+            inserted.Add(target);
+        }
+
+        await transaction.CommitAsync();
+        return inserted;
+    }
+
+    private static SshSession CloneImportedSession(SshSession source, string name, string? folderId, string? jumpId) => new()
+    {
+        Name = name,
+        Host = source.Host,
+        Port = source.Port,
+        Username = source.Username,
+        PrivateKeyPath = source.PrivateKeyPath,
+        FolderId = folderId,
+        ProxyJumpSessionId = jumpId
+    };
+
+    private static bool SameJumpConnection(SshSession existing, SshSession imported, string? previousId) =>
+        existing.Host.Equals(imported.Host, StringComparison.OrdinalIgnoreCase) &&
+        existing.Port == imported.Port && existing.Username == imported.Username &&
+        existing.ProxyJumpSessionId == previousId &&
+        existing.PrivateKeyPath == imported.PrivateKeyPath &&
+        existing.StepProfileId is null;
+
+    private async Task InsertSessionAsync(SqliteConnection connection, SqliteTransaction? transaction, SshSession session)
+    {
         await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = $"""
             INSERT INTO Sessions ({SessionColumns})
             VALUES (@Id, @Name, @Host, @Port, @Username, @Password, @PrivateKeyPath, @PrivateKeyPassword, @FolderId, @Description, @ProxyJumpSessionId, @StepProfileId);
@@ -240,7 +361,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         await using var connection = CreateConnection();
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
 
-        await ExecuteAsync(connection, transaction, "UPDATE Sessions SET ProxyJumpSessionId = NULL WHERE ProxyJumpSessionId = @Id;", id);
+        await ExecuteAsync(connection, transaction, "UPDATE Sessions SET ProxyJumpSessionId = NULL WHERE ProxyJumpSessionId = @Id AND TunnelOwned = 0;", id);
         await ExecuteAsync(connection, transaction, "DELETE FROM Sessions WHERE Id = @Id;", id);
 
         await transaction.CommitAsync();
@@ -320,7 +441,7 @@ public class SqliteSessionStorageService : ISessionStorageService
         await ExecuteAsync(connection, transaction, $"""
             {subtree}
             UPDATE Sessions SET ProxyJumpSessionId = NULL
-            WHERE ProxyJumpSessionId IN (SELECT Id FROM Sessions WHERE FolderId IN (SELECT Id FROM Tree));
+            WHERE TunnelOwned = 0 AND ProxyJumpSessionId IN (SELECT Id FROM Sessions WHERE FolderId IN (SELECT Id FROM Tree));
             """, id);
         await ExecuteAsync(connection, transaction, $"{subtree} DELETE FROM Sessions WHERE FolderId IN (SELECT Id FROM Tree);", id);
         await ExecuteAsync(connection, transaction, "DELETE FROM Folders WHERE Id = @Id;", id);

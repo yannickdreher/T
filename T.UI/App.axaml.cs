@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Styling;
 using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,6 +73,10 @@ public partial class App : Application
             "Dark" => ThemeVariant.Dark,
             _ => ThemeVariant.Default
         };
+
+        // The selected session tab takes the terminal colours and merges into the terminal (Styles/SessionTabs.axaml).
+        Resources["TerminalBackgroundBrush"] = new SolidColorBrush(settings.Terminal.GetBackgroundColor());
+        Resources["TerminalForegroundBrush"] = new SolidColorBrush(settings.Terminal.GetForegroundColor());
     }
 
     private async Task CheckForUpdatesAsync(Window mainWindow)

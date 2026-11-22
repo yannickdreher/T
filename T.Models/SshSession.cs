@@ -4,6 +4,8 @@ namespace T.Models;
 
 public partial class SshSession : ObservableObject
 {
+    public const int MaxJumpHops = 8;
+
     [ObservableProperty] private string _id = Guid.NewGuid().ToString();
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _host = "";

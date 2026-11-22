@@ -24,6 +24,12 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!--  Wide enough for "1023.9 KB/s"  -->
+        <Style Selector="TextBlock.netRate">
+            <Setter Property="Width" Value="64" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
         <Style Selector="ProgressBar.metric">
             <Setter Property="Width" Value="56" />
             <Setter Property="Height" Value="5" />
@@ -46,7 +52,7 @@
             <ProgressBar Classes="metric" Value="{Binding CpuPercent}" />
             <TextBlock MinWidth="32"
                        Classes="metricValue"
-                       Text="{Binding CpuPercent, StringFormat='{}{0:0}%'}" />
+                       Text="{Binding CpuDisplay}" />
         </StackPanel>
 
         <!--  RAM  -->
@@ -57,20 +63,7 @@
             <ProgressBar Classes="metric" Value="{Binding RamPercent}" />
             <TextBlock MinWidth="32"
                        Classes="metricValue"
-                       Text="{Binding RamPercent, StringFormat='{}{0:0}%'}" />
-        </StackPanel>
-
-        <!--  Network  -->
-        <StackPanel Orientation="Horizontal"
-                    Spacing="6"
-                    ToolTip.Tip="Remote network throughput">
-            <TextBlock Classes="metricLabel" Text="NET" />
-            <TextBlock Classes="metricValue" Foreground="{DynamicResource SystemFillColorSuccessBrush}">
-                <Run Text="↓" /><Run Text="{Binding NetworkDownDisplay}" />
-            </TextBlock>
-            <TextBlock Classes="metricValue" Foreground="{DynamicResource SystemFillColorCautionBrush}">
-                <Run Text="↑" /><Run Text="{Binding NetworkUpDisplay}" />
-            </TextBlock>
+                       Text="{Binding RamPercentDisplay}" />
         </StackPanel>
 
         <!--  Disk  -->
@@ -81,7 +74,34 @@
             <ProgressBar Classes="metric" Value="{Binding DiskPercent}" />
             <TextBlock MinWidth="32"
                        Classes="metricValue"
-                       Text="{Binding DiskPercent, StringFormat='{}{0:0}%'}" />
+                       Text="{Binding DiskPercentDisplay}" />
+        </StackPanel>
+
+        <!--
+            Network - last, because its values change width the most. Each rate sits in
+            a fixed-width, right-aligned box with tabular digits, so changing numbers
+            never move the arrows or anything to their right.
+        -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    ToolTip.Tip="Remote network throughput">
+            <TextBlock Classes="metricLabel" Text="NET" />
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <TextBlock Classes="metricValue"
+                           Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                           Text="↓" />
+                <TextBlock Classes="metricValue netRate"
+                           Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                           Text="{Binding NetworkDownDisplay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <TextBlock Classes="metricValue"
+                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                           Text="↑" />
+                <TextBlock Classes="metricValue netRate"
+                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                           Text="{Binding NetworkUpDisplay}" />
+            </StackPanel>
         </StackPanel>
     </StackPanel>
 </UserControl>

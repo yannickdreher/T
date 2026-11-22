@@ -1,0 +1,257 @@
+﻿<UserControl x:Class="T.UI.Views.Components.SystemMonitorDashboard"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:T.UI.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignHeight="600"
+             d:DesignWidth="1000"
+             x:DataType="vm:SystemMonitorViewModel"
+             mc:Ignorable="d">
+
+    <UserControl.Styles>
+        <!--  Resource cards  -->
+        <Style Selector="Border.metricCard">
+            <Setter Property="Padding" Value="14,10,14,10" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="TextBlock.metricTitle">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.metricValue">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+        <Style Selector="TextBlock.metricDetail">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+        <Style Selector="controls|MonitorSparkline">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="ToolTip.Tip" Value="Last five minutes" />
+        </Style>
+
+        <!--  Numbers in the process list: right aligned with tabular digits  -->
+        <Style Selector="TextBlock.number">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="12,0" />
+            <Setter Property="FontFeatures" Value="+tnum" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="16,12,16,12"
+          RowDefinitions="Auto,Auto,Auto,*,Auto"
+          RowSpacing="12">
+
+        <!--  Header: state and actions on the right (tab and status bar already name the host)  -->
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                <!--  State: colour and text  -->
+                <Border MaxWidth="420"
+                        Padding="8,3"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="10"
+                        ToolTip.Tip="{Binding Status}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Classes="status"
+                                 Classes.busy="{Binding IsStatusBusy}"
+                                 Classes.connected="{Binding IsLive}"
+                                 Classes.error="{Binding IsStatusWarning}" />
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Text="{Binding Status}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+                <TextBlock VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="{Binding LastSample, StringFormat='Updated {0}'}" />
+                <Border Classes="toolSeparator" />
+                <ToggleButton AutomationProperties.Name="Pause updates"
+                              Classes="tool"
+                              IsChecked="{Binding IsPaused}"
+                              ToolTip.Tip="Pause updates (the compact view in the status bar keeps updating)">
+                    <Panel>
+                        <PathIcon Data="{StaticResource pause_regular}" IsVisible="{Binding !IsPaused}" />
+                        <PathIcon Data="{StaticResource play_regular}" IsVisible="{Binding IsPaused}" />
+                    </Panel>
+                </ToggleButton>
+                <Button AutomationProperties.Name="Refresh now"
+                        Classes="tool"
+                        Command="{Binding RefreshCommand}"
+                        ToolTip.Tip="Refresh now">
+                    <PathIcon Data="{StaticResource arrow_clockwise_regular}" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  Resource cards: 4, 2 or 1 per row depending on the width (see code-behind)  -->
+        <WrapPanel x:Name="Cards"
+                   Grid.Row="1"
+                   ItemSpacing="10"
+                   LineSpacing="10"
+                   Orientation="Horizontal">
+            <Border Classes="metricCard">
+                <StackPanel>
+                    <TextBlock Classes="metricTitle" Text="CPU" />
+                    <TextBlock Classes="metricValue" Text="{Binding CpuDisplay}" />
+                    <TextBlock Classes="metricDetail" Text="All cores of the host" />
+                    <controls:MonitorSparkline LineBrush="{DynamicResource AccentFillColorDefaultBrush}" Points="{Binding Cpu.Points}" />
+                </StackPanel>
+            </Border>
+            <Border Classes="metricCard">
+                <StackPanel>
+                    <TextBlock Classes="metricTitle" Text="Memory" />
+                    <TextBlock Classes="metricValue" Text="{Binding RamPercentDisplay}" />
+                    <TextBlock Classes="metricDetail"
+                               Text="{Binding RamDisplay, StringFormat='{}{0} used'}"
+                               ToolTip.Tip="Used = total minus available (MemAvailable)" />
+                    <controls:MonitorSparkline LineBrush="{DynamicResource AccentFillColorDefaultBrush}" Points="{Binding Memory.Points}" />
+                </StackPanel>
+            </Border>
+            <Border Classes="metricCard">
+                <StackPanel>
+                    <TextBlock Classes="metricTitle" Text="Disk ( / )" />
+                    <TextBlock Classes="metricValue" Text="{Binding DiskPercentDisplay}" />
+                    <TextBlock Classes="metricDetail"
+                               Text="{Binding DiskDisplay}"
+                               ToolTip.Tip="File system usage of the root partition" />
+                    <controls:MonitorSparkline LineBrush="{DynamicResource AccentFillColorDefaultBrush}" Points="{Binding Disk.Points}" />
+                </StackPanel>
+            </Border>
+            <Border Classes="metricCard" ToolTip.Tip="Sum of all network interfaces except loopback">
+                <StackPanel>
+                    <TextBlock Classes="metricTitle" Text="Network" />
+                    <!--  Legend in the colours of the two lines  -->
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <TextBlock Classes="metricValue"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                   Text="{Binding NetworkDownDisplay, StringFormat='↓ {0}'}" />
+                        <TextBlock Margin="0,0,0,3"
+                                   VerticalAlignment="Bottom"
+                                   FontFeatures="+tnum"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                   Text="{Binding NetworkUpDisplay, StringFormat='↑ {0}'}" />
+                    </StackPanel>
+                    <TextBlock Classes="metricDetail" Text="Received (solid) · sent (dashed)" />
+                    <controls:MonitorSparkline LineBrush="{DynamicResource SystemFillColorSuccessBrush}"
+                                               Points="{Binding Network.Points}"
+                                               SecondaryBrush="{DynamicResource SystemFillColorCautionBrush}" />
+                </StackPanel>
+            </Border>
+        </WrapPanel>
+
+        <!--  Process filter  -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="*,Auto"
+              ColumnSpacing="12">
+            <TextBox AutomationProperties.Name="Filter processes"
+                     Classes="clearButton"
+                     MaxLength="120"
+                     PlaceholderText="Filter by name, PID or user"
+                     Text="{Binding ProcessFilter}">
+                <TextBox.InnerLeftContent>
+                    <PathIcon Margin="8,0,0,0"
+                              Classes="small file"
+                              Data="{StaticResource search_regular}" />
+                </TextBox.InnerLeftContent>
+            </TextBox>
+            <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="{Binding ProcessSummary}"
+                       ToolTip.Tip="Processes visible to the connected SSH user" />
+        </Grid>
+
+        <!--  Processes  -->
+        <DataGrid Grid.Row="3"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="True"
+                  GridLinesVisibility="Horizontal"
+                  IsReadOnly="True"
+                  ItemsSource="{Binding Processes}"
+                  SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                  SelectionMode="Single"
+                  Sorting="OnSort">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Width="80"
+                                        Header="PID"
+                                        SortMemberPath="Pid">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:MonitorProcessRow">
+                            <TextBlock Classes="number" Text="{Binding Pid}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="*"
+                                    MinWidth="140"
+                                    Binding="{ReflectionBinding Name}"
+                                    Header="Process"
+                                    SortMemberPath="Name" />
+                <DataGridTextColumn Width="130"
+                                    Binding="{ReflectionBinding User}"
+                                    Header="User"
+                                    SortMemberPath="User" />
+                <DataGridTextColumn Width="70"
+                                    Binding="{ReflectionBinding State}"
+                                    Header="State"
+                                    SortMemberPath="State" />
+                <DataGridTemplateColumn Width="90"
+                                        Header="CPU"
+                                        SortMemberPath="Cpu">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:MonitorProcessRow">
+                            <TextBlock Classes="number" Text="{Binding CpuDisplay}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="110"
+                                        Header="Memory"
+                                        SortMemberPath="ResidentBytes">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:MonitorProcessRow">
+                            <TextBlock Classes="number"
+                                       Text="{Binding MemoryDisplay}"
+                                       ToolTip.Tip="Resident memory (RSS)" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!--  Details of the selected process  -->
+        <Border Grid.Row="4"
+                Classes="metricCard"
+                IsVisible="{Binding SelectedProcess, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding SelectedProcess.Name}" />
+                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding SelectedProcess.Pid, StringFormat='PID {0}'}" />
+                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding SelectedProcess.User}" />
+                </StackPanel>
+                <ScrollViewer MaxHeight="80">
+                    <SelectableTextBlock FontFamily="Cascadia Mono, Consolas, Courier New, monospace"
+                                         FontSize="12"
+                                         Text="{Binding CommandLine}"
+                                         TextWrapping="Wrap" />
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

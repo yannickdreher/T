@@ -1,0 +1,76 @@
+﻿<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:FluentAvalonia.UI.Controls">
+    <!--
+        Session tabs (FATabView in the main window), close to the Windows 11 / Windows Terminal look.
+    -->
+
+    <Styles.Resources>
+        <!--  Tab strip starts flush with the top of the sidebar card  -->
+        <Thickness x:Key="TabViewHeaderPadding">0,0,0,0</Thickness>
+        <!--  Terminal colours; App.ApplyTheme replaces them with the configured ones  -->
+        <SolidColorBrush x:Key="TerminalBackgroundBrush" Color="#000000" />
+        <SolidColorBrush x:Key="TerminalForegroundBrush" Color="#CCCCCC" />
+    </Styles.Resources>
+
+    <!--
+        The selected tab's surface ends 1px above the tab strip's bottom line; FluentAvalonia hides that
+        line under the selected tab, which left a dark gap between tab and content. Fill it with the tab colour.
+    -->
+    <Style Selector="ui|FATabViewItem:selected /template/ Border#BottomBorderLine">
+        <Setter Property="IsVisible" Value="True" />
+        <Setter Property="Margin" Value="-1,0" />
+        <Setter Property="Background" Value="{DynamicResource TabViewItemHeaderBackgroundSelected}" />
+    </Style>
+
+    <!--
+        While the terminal is shown (TabView class "terminal"), the selected tab takes the terminal's
+        colours and merges into it, like in Windows Terminal. In the file view it keeps the surface colour.
+    -->
+    <Style Selector="ui|FATabView.terminal ui|FATabViewItem:selected">
+        <Style Selector="^ /template/ Border#BottomBorderLine">
+            <Setter Property="Background" Value="{DynamicResource TerminalBackgroundBrush}" />
+        </Style>
+        <Style Selector="^ /template/ Path#SelectedBackgroundPath">
+            <Setter Property="Fill" Value="{DynamicResource TerminalBackgroundBrush}" />
+        </Style>
+        <Style Selector="^ /template/ Border#TabContainerBorder">
+            <Setter Property="Background" Value="{DynamicResource TerminalBackgroundBrush}" />
+        </Style>
+        <Style Selector="^ /template/ ContentPresenter#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TerminalForegroundBrush}" />
+        </Style>
+        <Style Selector="^ /template/ Button#CloseButton">
+            <Setter Property="Foreground" Value="{DynamicResource TerminalForegroundBrush}" />
+        </Style>
+    </Style>
+
+    <!--
+        Close and add buttons: FluentAvalonia draws them as glyphs of a thin symbol font, which
+        subpixel text rendering turns into red/blue fringes (a "pink x"). The app's path icons
+        render neutral and match the other icons.
+    -->
+    <Style Selector="ui|FATabViewItem /template/ Button#CloseButton">
+        <Setter Property="ContentTemplate">
+            <DataTemplate>
+                <PathIcon Width="10"
+                          Height="10"
+                          Data="{StaticResource dismiss_regular}" />
+            </DataTemplate>
+        </Setter>
+    </Style>
+    <!--  Inactive tabs are muted (text is already secondary); the close button follows on hover  -->
+    <Style Selector="ui|FATabViewItem:not(:selected):not(:pointerover) /template/ Button#CloseButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+
+    <Style Selector="ui|FATabView /template/ Button#AddButton">
+        <Setter Property="ContentTemplate">
+            <DataTemplate>
+                <PathIcon Width="12"
+                          Height="12"
+                          Data="{StaticResource add_regular}" />
+            </DataTemplate>
+        </Setter>
+    </Style>
+</Styles>

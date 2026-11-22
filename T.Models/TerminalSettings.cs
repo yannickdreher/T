@@ -14,4 +14,7 @@ public partial class TerminalSettings : ObservableObject
     [ObservableProperty] private int _scrollbackLines = 10000;
     [ObservableProperty] private bool _cursorBlink = true;
     [ObservableProperty] private int _terminalPadding = 10;
+
+    /// <summary>Suggests commands from the server's history and commands while typing at the prompt.</summary>
+    [ObservableProperty] private bool _commandSuggestions = true;
 }

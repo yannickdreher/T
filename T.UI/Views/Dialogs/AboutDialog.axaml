@@ -2,7 +2,6 @@
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dialogs="using:T.UI.Views.Dialogs"
-             xmlns:svg="using:Avalonia.Svg.Skia"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              x:DataType="dialogs:AboutDialog">
 
@@ -10,9 +9,9 @@
         <StackPanel Margin="8" Spacing="16">
             <!--  Header mit Logo  -->
             <StackPanel HorizontalAlignment="Center" Spacing="12">
-                <svg:Svg Width="80"
-                         Height="80"
-                         Path="/Assets/logo.svg" />
+                <Image Width="80"
+                       Height="80"
+                       Source="avares://T/Assets/logo-v3.png" />
                 <TextBlock HorizontalAlignment="Center"
                            FontSize="24"
                            FontWeight="Bold"

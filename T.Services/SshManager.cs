@@ -33,6 +33,14 @@ public sealed class SshManager(IServiceProvider serviceProvider) : ISshManager, 
         return service;
     }
 
+    public ISshService CreateTunnel(SshSession session)
+    {
+        var service = ActivatorUtilities.CreateInstance<SshService>(_serviceProvider, session, false);
+        lock (_lock)
+            _instances.Add(service);
+        return service;
+    }
+
     /// <inheritdoc/>
     public void Release(ISshService service)
     {

@@ -50,4 +50,6 @@ public interface ISshService : IDisposable
     /// </summary>
     Task CopyAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default);
     Task<string?> RunCommandAsync(string commandText, CancellationToken cancellationToken = default);
+    Task<SshCommandResult> RunBoundedCommandAsync(
+        string commandText, int maxOutputBytes, TimeSpan timeout, CancellationToken cancellationToken = default);
 }

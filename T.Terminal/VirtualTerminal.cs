@@ -94,6 +94,13 @@ public class VirtualTerminal(int width = 80, int height = 24)
     private const char InvalidSequence = '\uFFFF'; // marks a malformed CSI sequence that must be ignored
     private bool _stringEscPending;
 
+    // Shell integration: OSC 133 prompt markers (FinalTerm / VS Code / fish / WezTerm).
+    // The input start is kept as an absolute line number (ScrollbackLinesAdded + row),
+    // so it stays correct while the screen scrolls.
+    private ShellPromptState _promptState;
+    private long _inputStartLine;
+    private int _inputStartColumn;
+
     // UTF-8 Handling
     private readonly Decoder _utf8Decoder = Encoding.UTF8.GetDecoder();
     private char[] _charBuffer = new char[8192];
@@ -127,6 +134,12 @@ public class VirtualTerminal(int width = 80, int height = 24)
     public MouseTrackingMode MouseTracking => _mouseTracking;
     /// <summary>Mode 1006: SGR extended mouse coordinate reporting.</summary>
     public bool SgrMouseMode => _sgrMouseMode;
+
+    /// <summary>True once the shell sent an OSC 133 prompt marker.</summary>
+    public bool HasShellIntegration { get; private set; }
+
+    /// <summary>Where the shell is, according to the OSC 133 markers.</summary>
+    public ShellPromptState PromptState => _promptState;
 
     public event Action? ScreenChanged;
     public event Action<string>? TitleChanged;
@@ -688,7 +701,110 @@ public class VirtualTerminal(int width = 80, int height = 24)
                 var text = _oscBuffer.ToString(semicolonIndex + 1, _oscBuffer.Length - (semicolonIndex + 1));
                 TitleChanged?.Invoke(text);
             }
+            else if (ps == 133 && semicolonIndex + 1 < _oscBuffer.Length)
+            {
+                HandlePromptMarker(_oscBuffer[semicolonIndex + 1]);
+            }
         }
+    }
+
+    /// <summary>OSC 133: A = prompt starts, B = command input starts, C = command runs, D = command finished.</summary>
+    private void HandlePromptMarker(char marker)
+    {
+        // Full-screen programs do not run a prompt; markers there would be stray output.
+        if (_alternateBuffer != null) return;
+
+        switch (marker)
+        {
+            case 'A':
+                HasShellIntegration = true;
+                _promptState = ShellPromptState.Prompt;
+                break;
+            case 'B':
+                HasShellIntegration = true;
+                _promptState = ShellPromptState.Input;
+                _inputStartLine = ScrollbackLinesAdded + _cursorRow;
+                _inputStartColumn = Math.Min(_cursorColumn, _width);
+                break;
+            case 'C':
+                HasShellIntegration = true;
+                _promptState = ShellPromptState.Executing;
+                break;
+            case 'D':
+                HasShellIntegration = true;
+                if (_promptState != ShellPromptState.Input) _promptState = ShellPromptState.Unknown;
+                break;
+        }
+    }
+
+    /// <summary>A new shell starts (connect, reconnect): forget the markers of the previous one.</summary>
+    public void ResetShellIntegration()
+    {
+        HasShellIntegration = false;
+        _promptState = ShellPromptState.Unknown;
+    }
+
+    /// <summary>
+    /// The user submitted the line (Enter, Ctrl+C, ...). Shells without a "command runs"
+    /// marker (bash before 4.4) are treated as busy from here until their next prompt.
+    /// </summary>
+    public void NotifyCommandSubmitted()
+    {
+        if (_promptState == ShellPromptState.Input)
+            _promptState = ShellPromptState.Executing;
+    }
+
+    /// <summary>
+    /// Reads the command line the user is editing at the shell prompt: the text from the
+    /// input start (OSC 133 B) up to the cursor. Returns false when no prompt is active,
+    /// a full-screen program runs or the input start has scrolled off the screen.
+    /// </summary>
+    public bool TryGetCommandLine(out ShellCommandLine commandLine)
+    {
+        commandLine = default;
+        if (_promptState != ShellPromptState.Input || _alternateBuffer != null) return false;
+
+        long start = _inputStartLine - ScrollbackLinesAdded;
+        if (start < 0 || start >= _height) return false;
+
+        int startRow = (int)start;
+        int startCol = Math.Min(_inputStartColumn, _width);
+        int cursorRow = _cursorRow;
+        int cursorCol = Math.Min(_cursorColumn, _width); // == width while a wrap is pending
+        if (cursorRow < startRow || (cursorRow == startRow && cursorCol < startCol)) return false;
+
+        var sb = new StringBuilder();
+        for (int row = startRow; row <= cursorRow; row++)
+        {
+            var line = _buffer[row];
+            int from = row == startRow ? startCol : 0;
+            int to = row == cursorRow ? cursorCol : _width;
+            for (int col = from; col < to; col++)
+            {
+                var cell = line[col];
+                if (cell.IsWideContinuation) continue;
+                int codePoint = cell.CodePoint == 0 ? ' ' : cell.CodePoint;
+                _graphemes.AppendText(sb, codePoint);
+            }
+        }
+
+        // Nothing may follow the cursor: neither on its row nor on the rows below.
+        bool atEnd = true;
+        for (int row = cursorRow; row < _height && atEnd; row++)
+        {
+            var line = _buffer[row];
+            for (int col = row == cursorRow ? cursorCol : 0; col < _width; col++)
+            {
+                if (line[col].CodePoint is not (0 or ' '))
+                {
+                    atEnd = false;
+                    break;
+                }
+            }
+        }
+
+        commandLine = new ShellCommandLine(sb.ToString(), startRow, startCol, atEnd);
+        return true;
     }
 
     private void PutString(ReadOnlySpan<char> text)
@@ -1451,6 +1567,7 @@ public class VirtualTerminal(int width = 80, int height = 24)
         _alternateBuffer = null;
         _buffer.Clear();
         _scrollback.Clear();
+        _promptState = ShellPromptState.Unknown;
 
         Array.Clear(_tabStops, 0, _tabStops.Length);
         for (int i = 8; i < _tabStops.Length; i += 8) _tabStops[i] = true;

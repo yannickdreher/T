@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,7 @@ namespace T.UI.ViewModels;
 
 public partial class MainWindowViewModel(
     SessionsTreeViewModel sessionsTree,
+    TunnelsWorkspaceViewModel tunnelsWorkspace,
     ISettingsService settingsService,
     IWindowProvider windowProvider,
     IServiceProvider serviceProvider) : ViewModelBase
@@ -27,6 +29,19 @@ public partial class MainWindowViewModel(
 
     public AppSettings Settings => _settingsService.Current;
     public SessionsTreeViewModel SessionsTree => _sessionsTree;
+    public TunnelsWorkspaceViewModel TunnelsWorkspace { get; } = tunnelsWorkspace;
+
+    [ObservableProperty] private bool _showTunnels;
+
+    [RelayCommand]
+    private void ShowTerminals() => ShowTunnels = false;
+
+    [RelayCommand]
+    private void OpenTunnels()
+    {
+        TunnelsWorkspace.Open();
+        ShowTunnels = true;
+    }
 
     [RelayCommand]
     private async Task ShowSettingsAsync()

@@ -13,6 +13,7 @@ using FluentAvalonia.UI.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using T.Abstractions;
 using T.Models;
+using T.Services;
 using T.UI.Abstractions;
 using T.UI.Models;
 using T.UI.Services;
@@ -76,6 +77,12 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private SystemMonitorViewModel _systemMonitor = new();
     [ObservableProperty] private string _pathInput = "/";
 
+    partial void OnIsActiveChanged(bool value) => UpdateSystemMonitorVisibility();
+
+    partial void OnSelectedSessionTabChanged(int value) => UpdateSystemMonitorVisibility();
+
+    private void UpdateSystemMonitorVisibility() => SystemMonitor.SetVisibility(IsActive, IsActive && SelectedSessionTab == 2);
+
     /// <summary>Address bar segments of <see cref="CurrentPath"/> (server root first).</summary>
     [ObservableProperty] private ObservableCollection<PathSegment> _pathSegments = [];
 
@@ -123,6 +130,18 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
     public event Action<string>? OutputReceived;
     public event Action<SessionViewModel>? SessionClosed;
+
+    /// <summary>History and commands of the server for the terminal's command suggestions.</summary>
+    public CommandSuggestionEngine CommandSuggestions { get; } = new();
+
+    /// <summary>
+    /// The bash shell integration script is installed on the server for the current connection:
+    /// the terminal may load it at the next prompt. Raised again after every reconnect (new shell).
+    /// </summary>
+    public event Action? ShellIntegrationAvailable;
+
+    // Incremented per connection, so results of an older connection are dropped.
+    private int _shellAssistGeneration;
 
     /// <summary>
     /// Raised when this session is disposed (tab closed). Views bound to this
@@ -175,7 +194,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
     {
         ConnectionStatus = ConnectionStatus.Connected;
         IsConnected = true;
-        StatusMessage = "Connected to example.com";
+        StatusMessage = "Uploaded: notes.txt";
         FileExplorerStatus = "SFTP ready";
         CurrentPath = "/home/user";
 
@@ -310,10 +329,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
 
         var service = _sshManager.Create(Session, _terminalColumns, _terminalRows, _terminalPixelWidth, _terminalPixelHeight);
 
-        service.CredentialsRequired += () => ShowCredentialsDialogAsync(null);
-        service.AuthenticationFailed += ShowCredentialsDialogAsync;
-        service.HostKeyVerificationRequired += ShowHostKeyDialogAsync;
-        service.AuthPromptRequired += ShowAuthPromptAsync;
+        AttachAuthenticationHandlers(service);
 
         service.ShellDataReceived += output =>
             Dispatcher.UIThread.Post(() => { if (!_disposed) WriteToTerminal(output); });
@@ -350,7 +366,10 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
             case ConnectionStatus.Connecting:
                 IsConnecting = true;
                 ShowOverlay = true;
-                StatusMessage = OverlayMessage = $"Connecting to {Session.Host}...";
+                // The connection state is shown on the left of the status bar; the
+                // message area is for action results and errors only.
+                StatusMessage = string.Empty;
+                OverlayMessage = $"Connecting to {Session.Host}...";
                 FileExplorerStatus = "Connecting...";
                 break;
 
@@ -360,12 +379,16 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 IsConnected = true;
                 ShowOverlay = false;
                 ConnectionError = null;
-                StatusMessage = $"Connected to {Session.Host}";
-                if (_sshService is not null) SystemMonitor.Start(_sshService);
+                StatusMessage = string.Empty;
+                if (_sshService is not null)
+                {
+                    SystemMonitor.Start(_sshService, Session.Address);
+                    _ = LoadShellAssistAsync(_sshService);
+                }
                 break;
 
             case ConnectionStatus.Disconnecting:
-                StatusMessage = "Disconnecting...";
+                StatusMessage = string.Empty;
                 FileExplorerStatus = "Disconnecting...";
                 break;
 
@@ -374,7 +397,7 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 IsReconnecting = true;
                 ShowOverlay = true;
                 OverlayMessage = $"Connection lost.\nReconnecting to {Session.Host}...";
-                StatusMessage = "Reconnecting...";
+                StatusMessage = string.Empty;
                 FileExplorerStatus = "Reconnecting...";
                 SystemMonitor.Stop();
                 break;
@@ -397,13 +420,49 @@ public partial class SessionViewModel : ViewModelBase, IDisposable
                 }
                 else
                 {
-                    StatusMessage = "Disconnected";
+                    StatusMessage = string.Empty;
                     SessionClosed?.Invoke(this);
                 }
                 break;
         }
 
         ConnectCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Installs the shell integration and loads history and commands for the suggestions.
+    /// Runs over separate exec channels, so the interactive shell is not disturbed. The history
+    /// is kept in memory only.
+    /// </summary>
+    private async Task LoadShellAssistAsync(ISshService service)
+    {
+        int generation = ++_shellAssistGeneration;
+        if (!TerminalSettings.CommandSuggestions) return;
+
+        bool IsCurrent() => !_disposed && generation == _shellAssistGeneration && ReferenceEquals(service, _sshService);
+
+        try
+        {
+            var install = await service.RunCommandAsync(ShellIntegration.InstallCommand);
+            if (!IsCurrent()) return;
+            if (ShellIntegration.IsBashLoginShell(install)) ShellIntegrationAvailable?.Invoke();
+
+            var historyOutput = await service.RunCommandAsync(ShellIntegration.HistoryCommand);
+            var commandsOutput = await service.RunCommandAsync(ShellIntegration.CommandsCommand);
+            if (!IsCurrent()) return;
+
+            var history = await Task.Run(() => ShellIntegration.ParseHistory(historyOutput));
+            var commands = await Task.Run(() => ShellIntegration.ParseCommands(commandsOutput));
+            if (!IsCurrent()) return;
+
+            CommandSuggestions.SetHistory(history);
+            CommandSuggestions.SetCommands(commands);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Suggestions are a convenience; the terminal works without them.
+            System.Diagnostics.Debug.WriteLine($"[Session] Loading command suggestions failed: {ex.Message}");
+        }
     }
 
     private void ClearExplorer()

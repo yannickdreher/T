@@ -7,6 +7,7 @@ public interface ISessionStorageService
     Task<List<SshSession>> LoadSessionsAsync();
     Task<SshSession?> GetSessionByIdAsync(string id);
     Task AddSessionAsync(SshSession session);
+    Task<IReadOnlyList<SshSession>> ImportSessionsAsync(IReadOnlyList<SshImportProfile> profiles, string? folderId);
     Task UpdateSessionAsync(SshSession session);
     Task DeleteSessionAsync(string id);
 

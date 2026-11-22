@@ -7,6 +7,7 @@ A modern, cross-platform SSH terminal client built with Avalonia UI.
 ## Features
 
 - 🖥️ Terminal emulator (VT100/xterm-256color)
+- 💡 Command suggestions while typing at the prompt: the matching command from the server's history as grey text (→ accepts) and a list of further history entries and commands (↓ selects, Tab inserts, Ctrl+Space opens it)
 - 📁 SFTP file browser with Auto-upload on file save
 - 🔐 Multiple authentication methods (password, keyboard-interactive incl. 2FA prompts, private keys incl. OpenSSH certificates and PuTTY `.ppk`, default keys from `~/.ssh`)
 - 🎫 Short-lived SSH certificates from a [step-ca](https://smallstep.com/docs/step-ca/), requested with the `step` CLI when needed (e.g. OIDC browser login), per session
@@ -21,6 +22,10 @@ A modern, cross-platform SSH terminal client built with Avalonia UI.
   Set the environment variable `T_DATA_DIR` to use a different folder (portable use, testing).
 - Stored passwords and key passphrases are encrypted with AES-256-GCM. The random master key
   (`master.key`) is protected with DPAPI on Windows and readable only by the user on Linux/macOS.
+- Command suggestions read the last lines of the shell history (`~/.bash_history`, `~/.zsh_history`, fish) and the
+  command names over a separate SSH channel; they are kept in memory only. For bash, T writes a small script to
+  `~/.cache/t/shell-integration.bash` and loads it into the session (prompt markers, nothing is added to startup files).
+  Other shells get suggestions when they send OSC 133 prompt markers themselves. Can be turned off in *Settings → Terminal*.
 - Secrets written by older versions are migrated automatically on first start. Older versions
   of T cannot read the migrated values anymore (you would have to re-enter the passwords after a downgrade).
 

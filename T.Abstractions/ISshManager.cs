@@ -10,6 +10,9 @@ public interface ISshManager
     /// </summary>
     ISshService Create(SshSession session, uint cols, uint rows, uint pixelWidth, uint pixelHeight);
 
+    /// <summary>Creates an SSH connection without a shell, PTY or SFTP client.</summary>
+    ISshService CreateTunnel(SshSession session);
+
     /// <summary>Disconnects and disposes a connection created by <see cref="Create"/>.</summary>
     void Release(ISshService service);
 }

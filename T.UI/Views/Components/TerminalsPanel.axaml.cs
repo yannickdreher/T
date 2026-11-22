@@ -10,7 +10,7 @@ using T.UI.ViewModels;
 
 namespace T.UI.Views.Components;
 
-public partial class SessionsPanel : UserControl
+public partial class TerminalsPanel : UserControl
 {
     private ITreeNode? _draggedNode;
     private TreeViewItem? _draggedItem;
@@ -20,7 +20,7 @@ public partial class SessionsPanel : UserControl
     private bool _isDragging;
     private const double DragThreshold = 8;
 
-    public SessionsPanel()
+    public TerminalsPanel()
     {
         InitializeComponent();
 
@@ -177,7 +177,8 @@ public partial class SessionsPanel : UserControl
         if (node.IsFolder)
         {
             menu.Items.Add(new MenuItem { Header = "Add new folder", Command = Vm.NewFolderCommand });
-            menu.Items.Add(new MenuItem { Header = "Add new session", Command = Vm.NewSessionCommand });
+            menu.Items.Add(new MenuItem { Header = "Add terminal profile", Command = Vm.NewSessionCommand });
+            menu.Items.Add(new MenuItem { Header = "Import OpenSSH configuration", Command = Vm.ImportOpenSshConfigCommand });
             menu.Items.Add(new Separator());
             menu.Items.Add(new MenuItem { Header = "Edit folder", Command = Vm.EditFolderCommand });
             menu.Items.Add(new MenuItem { Header = "Delete folder", Command = Vm.DeleteSelectedCommand });
@@ -185,8 +186,8 @@ public partial class SessionsPanel : UserControl
         else
         {
             menu.Items.Add(new MenuItem { Header = "Connect", Command = Vm.ConnectCommand });
-            menu.Items.Add(new MenuItem { Header = "Edit session", Command = Vm.EditSessionCommand });
-            menu.Items.Add(new MenuItem { Header = "Delete session", Command = Vm.DeleteSelectedCommand });
+            menu.Items.Add(new MenuItem { Header = "Edit terminal profile", Command = Vm.EditSessionCommand });
+            menu.Items.Add(new MenuItem { Header = "Delete terminal profile", Command = Vm.DeleteSelectedCommand });
         }
 
         item.ContextMenu = menu;

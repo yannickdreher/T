@@ -21,10 +21,13 @@
             CornerRadius="0,0,6,6">
         <Grid RowDefinitions="*,Auto">
 
-            <!--  Both panels stay attached; only visibility changes, so the terminal keeps its state.  -->
+            <!--  Only visibility changes, so the terminal keeps its state.  -->
             <Panel Grid.Row="0">
                 <ContentControl x:Name="TerminalHost" IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=0}" />
                 <components:SftpExplorerView IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=1}" />
+                <Border IsVisible="{Binding SelectedSessionTab, Converter={StaticResource EqualsConverter}, ConverterParameter=2}">
+                    <components:SystemMonitorDashboard DataContext="{Binding SystemMonitor}" />
+                </Border>
             </Panel>
 
             <components:SessionStatusBarView Grid.Row="1" />

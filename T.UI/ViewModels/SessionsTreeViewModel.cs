@@ -21,6 +21,7 @@ namespace T.UI.ViewModels;
 
 public partial class SessionsTreeViewModel : ViewModelBase
 {
+    private readonly HashSet<string> _deletingSessionIds = [];
     private readonly ISessionStorageService _storageService;
     private readonly ISettingsService? _settingsService;
     private readonly IWindowProvider _windowProvider;
@@ -43,8 +44,8 @@ public partial class SessionsTreeViewModel : ViewModelBase
     public bool HasOpenSessions => OpenSessions.Count > 0;
     public bool IsEmpty => TreeNodes.Count == 0;
     public string EmptyText => string.IsNullOrWhiteSpace(SearchText)
-        ? "No sessions yet.\nCreate one with the + button."
-        : "No session matches the search.";
+        ? "No terminal profiles yet.\nCreate one with the + button."
+        : "No terminal matches the search.";
 
     partial void OnSearchTextChanged(string value) => BuildTree();
 
@@ -535,13 +536,14 @@ public partial class SessionsTreeViewModel : ViewModelBase
                 var message = contained.Count == 0
                     ? $"Delete folder \"{folderNode.Name}\"?"
                     : $"Delete folder \"{folderNode.Name}\" including {contained.Count} session(s)?";
+                message += await DescribeTunnelsAsync(contained);
                 if (!await DialogService.ConfirmAsync(Host, "Delete Folder", message)) return;
 
-                foreach (var session in contained)
-                    CloseSessionById(session.Id);
-
-                await _storageService.DeleteFolderAsync(folderNode.Folder.Id);
-                await LoadAllAsync();
+                await DeleteProfilesAsync(contained, async () =>
+                {
+                    await _storageService.DeleteFolderAsync(folderNode.Folder.Id);
+                    await LoadAllAsync();
+                });
             }
             else if (SelectedTreeNode is SessionTreeNode { Session: not null } sessionNode)
             {
@@ -550,21 +552,57 @@ public partial class SessionsTreeViewModel : ViewModelBase
                 var message = dependents == 0
                     ? $"Delete session \"{session.Name}\"?"
                     : $"Delete session \"{session.Name}\"? It is used as jump host by {dependents} other session(s), which will then connect directly.";
-                if (!await DialogService.ConfirmAsync(Host, "Delete Session", message)) return;
+                message += await DescribeTunnelsAsync([session]);
+                if (!await DialogService.ConfirmAsync(Host, "Delete terminal profile", message)) return;
 
-                CloseSessionById(session.Id);
-                await _storageService.DeleteSessionAsync(session.Id);
+                await DeleteProfilesAsync([session], async () =>
+                {
+                    await _storageService.DeleteSessionAsync(session.Id);
 
-                foreach (var dependent in Sessions.Where(s => s.ProxyJumpSessionId == session.Id))
-                    dependent.ProxyJumpSessionId = null;
+                    foreach (var dependent in Sessions.Where(s => s.ProxyJumpSessionId == session.Id))
+                        dependent.ProxyJumpSessionId = null;
 
-                Sessions.Remove(session);
-                BuildTree();
+                    Sessions.Remove(session);
+                    BuildTree();
+                });
             }
         }
         catch (Exception ex)
         {
             await ShowErrorAsync("Delete failed", ex.Message);
+        }
+    }
+
+    /// <summary>Tunnels connect through profiles and are deleted with them: say so in the confirmation.</summary>
+    private async Task<string> DescribeTunnelsAsync(List<SshSession> sessions)
+    {
+        if (_storageService is not ILocalTunnelStore store || sessions.Count == 0) return "";
+        var ids = sessions.Select(s => s.Id).ToHashSet();
+        var tunnels = (await store.LoadAllLocalTunnelsAsync()).Where(r => ids.Contains(r.SessionId)).ToList();
+        return tunnels.Count switch
+        {
+            0 => "",
+            1 => $"\n\nThe tunnel \"{tunnels[0].Name}\" connects through it and will be deleted as well.",
+            _ => $"\n\n{tunnels.Count} tunnels connect through it and will be deleted as well."
+        };
+    }
+
+    private async Task DeleteProfilesAsync(IReadOnlyList<SshSession> sessions, Func<Task> delete)
+    {
+        foreach (var session in sessions)
+            _deletingSessionIds.Add(session.Id);
+
+        try
+        {
+            foreach (var session in sessions)
+                CloseSessionById(session.Id);
+
+            await delete();
+        }
+        finally
+        {
+            foreach (var session in sessions)
+                _deletingSessionIds.Remove(session.Id);
         }
     }
 
@@ -595,6 +633,9 @@ public partial class SessionsTreeViewModel : ViewModelBase
     /// <summary>Opens a new tab with its own connection - also when the session is already open in another tab.</summary>
     private async Task ConnectToSessionAsync(SshSession session)
     {
+        if (_deletingSessionIds.Contains(session.Id) || !Sessions.Any(saved => saved.Id == session.Id))
+            return;
+
         var sessionVm = ActivatorUtilities.CreateInstance<SessionViewModel>(_serviceProvider, session);
         sessionVm.SessionClosed += OnSessionClosed;
 

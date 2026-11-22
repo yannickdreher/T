@@ -2,7 +2,9 @@ using System;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using T.UI.Controls;
 using T.UI.Extensions;
@@ -15,6 +17,13 @@ public partial class TerminalView : UserControl, IDisposable
     private SessionViewModel? _currentVm;
     private readonly TerminalControl? _terminal;
     private readonly TerminalStatsOverlay? _stats;
+    private readonly Border _searchBar;
+    private readonly TextBox _searchQuery;
+    private readonly TextBlock _searchStatus;
+    private readonly ToggleButton _searchMatchCase;
+    private readonly Button _searchPrevious;
+    private readonly Button _searchNext;
+    private readonly CommandSuggestionController? _suggestions;
     private readonly DispatcherTimer _statsTimer;
     private bool _isDisposed;
 
@@ -24,11 +33,25 @@ public partial class TerminalView : UserControl, IDisposable
 
         _terminal = this.FindControl<TerminalControl>("Terminal");
         _stats = this.FindControl<TerminalStatsOverlay>("Stats");
+        _searchBar = this.FindControl<Border>("SearchBar")!;
+        _searchQuery = this.FindControl<TextBox>("SearchQuery")!;
+        _searchStatus = this.FindControl<TextBlock>("SearchStatus")!;
+        _searchMatchCase = this.FindControl<ToggleButton>("SearchMatchCase")!;
+        _searchPrevious = this.FindControl<Button>("SearchPrevious")!;
+        _searchNext = this.FindControl<Button>("SearchNext")!;
+        _searchBar.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
+        _searchQuery.TextChanged += (_, _) => UpdateSearch();
+        _searchMatchCase.IsCheckedChanged += (_, _) => UpdateSearch();
 
         if (_terminal != null)
         {
             _terminal.TerminalResized += OnTerminalResized;
             _terminal.InputReceived += OnInputReceived;
+            _terminal.SearchRequested += OpenSearch;
+            _terminal.SearchUpdated += ShowSearchState;
+
+            if (this.FindControl<CommandSuggestionPopup>("Suggestions") is { } popup)
+                _suggestions = new CommandSuggestionController(_terminal, popup);
         }
 
         _statsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -40,7 +63,11 @@ public partial class TerminalView : UserControl, IDisposable
             }
         };
 
-        GotFocus += (_, _) => _terminal?.Focus();
+        GotFocus += (_, e) =>
+        {
+            if (ReferenceEquals(e.Source, this))
+                _terminal?.Focus();
+        };
     }
 
     public TerminalView(SessionViewModel viewModel) : this()
@@ -59,6 +86,7 @@ public partial class TerminalView : UserControl, IDisposable
         _currentVm.Disposed += OnSessionDisposed;
 
         ApplySettings();
+        _suggestions?.Attach(vm);
 
         _stats?.Model = vm.TerminalStats;
         UpdateStatsOverlay();
@@ -72,6 +100,7 @@ public partial class TerminalView : UserControl, IDisposable
         _currentVm.PropertyChanged -= OnViewModelPropertyChanged;
         _currentVm.TerminalSettings.PropertyChanged -= OnSettingsChanged;
         _currentVm.Disposed -= OnSessionDisposed;
+        _suggestions?.Detach();
 
         _statsTimer.Stop();
         if (_stats != null) _stats.IsVisible = false;
@@ -87,6 +116,12 @@ public partial class TerminalView : UserControl, IDisposable
         _isDisposed = true;
 
         DetachViewModel();
+        _suggestions?.Dispose();
+        if (_terminal != null)
+        {
+            _terminal.SearchRequested -= OpenSearch;
+            _terminal.SearchUpdated -= ShowSearchState;
+        }
         _terminal?.Shutdown();
         GC.SuppressFinalize(this);
     }
@@ -171,6 +206,68 @@ public partial class TerminalView : UserControl, IDisposable
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        if (!_searchBar.IsPointerOver)
+            _terminal?.Focus();
+    }
+
+    private void OpenSearch()
+    {
+        if (!_searchBar.IsVisible)
+        {
+            _searchBar.IsVisible = true;
+            UpdateSearch();
+        }
+        _searchQuery.Focus();
+        _searchQuery.SelectAll();
+    }
+
+    private void UpdateSearch()
+    {
+        if (_searchBar.IsVisible)
+            _terminal?.SetSearch(_searchQuery.Text, _searchMatchCase.IsChecked == true);
+    }
+
+    private void ShowSearchState(int current, int count, bool searching)
+    {
+        _searchPrevious.IsEnabled = count > 0;
+        _searchNext.IsEnabled = count > 0;
+
+        string? query = _searchQuery.Text;
+        if (searching)
+            _searchStatus.Text = "Searching…";
+        else if (count > 0)
+            _searchStatus.Text = $"{current} of {count}";
+        else if (string.IsNullOrEmpty(query))
+            _searchStatus.Text = "";
+        else if (!TerminalControl.IsSearchQueryValid(query))
+            _searchStatus.Text = "Type 2 characters";
+        else
+            _searchStatus.Text = "No matches";
+    }
+
+    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseSearch();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && _searchQuery.IsKeyboardFocusWithin &&
+                 e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift)
+        {
+            _terminal?.MoveSearch(e.KeyModifiers == KeyModifiers.Shift ? -1 : 1);
+            e.Handled = true;
+        }
+    }
+
+    private void OnSearchPrevious(object? sender, RoutedEventArgs e) => _terminal?.MoveSearch(-1);
+    private void OnSearchNext(object? sender, RoutedEventArgs e) => _terminal?.MoveSearch(1);
+    private void OnSearchClose(object? sender, RoutedEventArgs e) => CloseSearch();
+
+    private void CloseSearch()
+    {
+        _searchBar.IsVisible = false;
+        _terminal?.ClearSearch();
         _terminal?.Focus();
     }
 

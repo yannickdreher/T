@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         // SessionViewModel and UpdateDialogViewModel need runtime arguments and are
         // created with ActivatorUtilities.CreateInstance instead of being resolved.
         services.AddSingleton<SessionsTreeViewModel>();
+        services.AddSingleton<TunnelsWorkspaceViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddTransient<SettingsDialogViewModel>();
 

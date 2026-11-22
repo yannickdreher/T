@@ -16,11 +16,10 @@ namespace T.Services;
 ///
 /// Threading: events are raised on background threads; consumers marshal to the UI.
 /// </summary>
-public sealed class SshService : ISshService
+public sealed partial class SshService : ISshService, ILocalTunnelConnection
 {
     private const int MaxAuthAttempts = 3;
     private const int MaxHostKeyPrompts = 3;
-    private const int MaxJumpHops = 8;
     private const int ShellBufferSize = 64 * 1024;
     private static readonly TimeSpan OutputBatchDelay = TimeSpan.FromMilliseconds(16);
     private static readonly TimeSpan ProgressReportInterval = TimeSpan.FromMilliseconds(100);
@@ -29,6 +28,7 @@ public sealed class SshService : ISshService
     private static readonly TimeSpan SftpOperationTimeout = TimeSpan.FromMinutes(2);
 
     private readonly SshSession _session;
+    private readonly bool _openTerminal;
     private readonly ISettingsService _settingsService;
     private readonly IKnownHostsService _knownHostsService;
     private readonly ISessionStorageService _sessionStorageService;
@@ -94,9 +94,11 @@ public sealed class SshService : ISshService
         uint columns = 120,
         uint rows = 30,
         uint pixelWidth = 960,
-        uint pixelHeight = 480)
+        uint pixelHeight = 480,
+        bool openTerminal = true)
     {
         _session = session;
+        _openTerminal = openTerminal;
         _settingsService = settingsService;
         _knownHostsService = knownHostsService;
         _sessionStorageService = sessionStorageService;
@@ -108,7 +110,8 @@ public sealed class SshService : ISshService
         _pixelHeight = pixelHeight;
 
         _outputTimer = new Timer(_ => FlushOutput());
-        _ = Task.Run(InputWriterLoopAsync);
+        if (_openTerminal)
+            _ = Task.Run(InputWriterLoopAsync);
     }
 
     // ── Connect ──────────────────────────────────────────────────────────
@@ -278,8 +281,8 @@ public sealed class SshService : ISshService
         {
             if (!visited.Add(nextId))
                 throw new SshJumpHostException("The jump host configuration contains a loop.", isPermanent: true);
-            if (chain.Count >= MaxJumpHops)
-                throw new SshJumpHostException($"Too many jump hosts (maximum {MaxJumpHops}).", isPermanent: true);
+            if (chain.Count >= SshSession.MaxJumpHops)
+                throw new SshJumpHostException($"Too many jump hosts (maximum {SshSession.MaxJumpHops}).", isPermanent: true);
 
             var hop = await _sessionStorageService.GetSessionByIdAsync(nextId)
                 ?? throw new SshJumpHostException("The configured jump host no longer exists. Please edit the session.", isPermanent: true);
@@ -492,9 +495,12 @@ public sealed class SshService : ISshService
     {
         try
         {
-            var modes = new Dictionary<TerminalModes, uint> { [TerminalModes.IUTF8] = 1 };
-            connection.Shell = connection.Ssh.CreateShellStream(
-                "xterm-256color", _terminalColumns, _terminalRows, _pixelWidth, _pixelHeight, ShellBufferSize, modes);
+            if (_openTerminal)
+            {
+                var modes = new Dictionary<TerminalModes, uint> { [TerminalModes.IUTF8] = 1 };
+                connection.Shell = connection.Ssh.CreateShellStream(
+                    "xterm-256color", _terminalColumns, _terminalRows, _pixelWidth, _pixelHeight, ShellBufferSize, modes);
+            }
         }
         catch
         {
@@ -515,6 +521,7 @@ public sealed class SshService : ISshService
         }
 
         connection.Ssh.ErrorOccurred += (_, e) => HandleConnectionLost(connection, e.Exception);
+        if (!_openTerminal) return;
 
         // A dedicated reader drains the ShellStream. Only subscribing to DataReceived would
         // let the stream's internal read buffer grow for the whole lifetime of the session.
@@ -683,6 +690,14 @@ public sealed class SshService : ISshService
         }
 
         Debug.WriteLine($"[SshService] Connection to {_session.Host} lost: {error?.Message}");
+        if (!_openTerminal)
+        {
+            // Tunnel transports do not reconnect: report the loss and allow a new connect.
+            TeardownConnection();
+            lock (_stateLock) _reconnecting = false;
+            SetStatus(ConnectionStatus.Disconnected, error == null ? "SSH connection lost." : DescribeError(error));
+            return;
+        }
         _ = ReconnectLoopAsync();
     }
 
@@ -749,20 +764,18 @@ public sealed class SshService : ISshService
     /// <summary>Detaches and disposes the active connection. Returns true when there was one.</summary>
     private bool TeardownConnection()
     {
-        Connection? connection;
         lock (_stateLock)
         {
-            connection = _connection;
+            var connection = _connection;
             _connection = null;
+            if (connection == null)
+                return false;
+
+            connection.IsClosing = true;
+            // Disconnecting sends messages and waits for channel close - keep that off the caller.
+            _connectionCleanup = Task.WhenAll(_connectionCleanup, Task.Run(connection.Dispose));
+            return true;
         }
-
-        if (connection == null)
-            return false;
-
-        connection.IsClosing = true;
-        // Disconnecting sends messages and waits for channel close - keep that off the caller (often the UI thread).
-        _ = Task.Run(connection.Dispose);
-        return true;
     }
 
     private CancellationTokenSource BeginOperation(CancellationToken external)
@@ -809,6 +822,7 @@ public sealed class SshService : ISshService
             _status = status;
         }
         StatusChanged?.Invoke(status, error);
+        LocalTunnelsChanged?.Invoke();
     }
 
     private static string DescribeError(Exception ex) => ex switch
@@ -1110,17 +1124,7 @@ public sealed class SshService : ISshService
         CancelOperation();
         _input.Writer.TryComplete();
 
-        Connection? connection;
-        lock (_stateLock)
-        {
-            connection = _connection;
-            _connection = null;
-        }
-        if (connection != null)
-        {
-            connection.IsClosing = true;
-            _ = Task.Run(connection.Dispose);
-        }
+        TeardownConnection();
 
         _outputTimer.Dispose();
     }
@@ -1134,7 +1138,7 @@ public sealed class SshService : ISshService
     }
 
     /// <summary>Everything that belongs to one established connection.</summary>
-    private sealed class Connection(SshClient ssh, List<IDisposable> resources, HostIdentity identity, string host, int port, bool interactive) : IDisposable
+    private sealed partial class Connection(SshClient ssh, List<IDisposable> resources, HostIdentity identity, string host, int port, bool interactive) : IDisposable
     {
         private readonly CancellationTokenSource _cts = new();
         private readonly Lock _sftpSync = new();
@@ -1189,6 +1193,7 @@ public sealed class SshService : ISshService
             lock (_sftpSync) IsClosing = true;
             try { _cts.Cancel(); } catch (ObjectDisposedException) { }
 
+            DisposeLocalTunnels();
             try { Shell?.Dispose(); } catch (Exception) { }
             DisposeSftp();
             try { if (Ssh.IsConnected) Ssh.Disconnect(); } catch (Exception) { }

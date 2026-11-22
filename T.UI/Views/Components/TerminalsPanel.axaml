@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="T.UI.Views.Components.SessionsPanel"
+﻿<UserControl x:Class="T.UI.Views.Components.TerminalsPanel"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -30,13 +30,13 @@
             <Grid Grid.Row="0"
                   Margin="10,6,6,2"
                   ColumnDefinitions="*,Auto">
-                <TextBlock Classes="paneTitle" Text="Sessions" />
+                <TextBlock Classes="paneTitle" Text="Terminals" />
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             Spacing="1">
                     <Button Classes="tool"
                             Command="{Binding NewSessionCommand}"
-                            ToolTip.Tip="New session">
+                            ToolTip.Tip="New terminal profile">
                         <PathIcon Data="{StaticResource plug_connected_add_regular}" />
                     </Button>
                     <Button Classes="tool"
@@ -56,15 +56,31 @@
                         <PathIcon Data="{StaticResource delete_regular}" />
                     </Button>
                     <Border Classes="toolSeparator" />
-                    <Button Classes="tool"
-                            Command="{Binding ExpandAllFoldersCommand}"
-                            ToolTip.Tip="Expand all">
-                        <PathIcon Data="{StaticResource chevron_down_regular}" />
-                    </Button>
-                    <Button Classes="tool"
-                            Command="{Binding CollapseAllFoldersCommand}"
-                            ToolTip.Tip="Collapse all">
-                        <PathIcon Data="{StaticResource chevron_up_regular}" />
+                    <!--  Less frequent actions; keeps the header narrow enough for the title  -->
+                    <Button AutomationProperties.Name="More actions"
+                            Classes="tool"
+                            ToolTip.Tip="More actions">
+                        <PathIcon Data="{StaticResource more_horizontal_regular}" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Command="{Binding ImportOpenSshConfigCommand}" Header="Import OpenSSH configuration…">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource document_arrow_down_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Command="{Binding ExpandAllFoldersCommand}" Header="Expand all folders">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource chevron_down_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Command="{Binding CollapseAllFoldersCommand}" Header="Collapse all folders">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{StaticResource chevron_up_regular}" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -73,7 +89,7 @@
             <TextBox Grid.Row="1"
                      Margin="8,4,8,6"
                      Classes="clearButton"
-                     PlaceholderText="Search sessions"
+                     PlaceholderText="Search terminals"
                      Text="{Binding SearchText}">
                 <TextBox.InnerLeftContent>
                     <PathIcon Margin="8,0,0,0"

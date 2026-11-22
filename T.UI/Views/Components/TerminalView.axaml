@@ -18,11 +18,80 @@
 
     <Grid>
         <controls:TerminalControl x:Name="Terminal" />
+        <!--  Command suggestions at the shell prompt (positioned by CommandSuggestionController)  -->
+        <components:CommandSuggestionPopup x:Name="Suggestions"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Top"
+                                           IsVisible="False" />
         <components:TerminalStatsOverlay x:Name="Stats"
                                          MinWidth="128"
                                          Margin="8"
                                          HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          IsVisible="False" />
+        <!--  Find in the terminal output (Ctrl+F), floating at the top right like in VS Code  -->
+        <Border x:Name="SearchBar"
+                Width="430"
+                Margin="0,8,16,0"
+                Padding="6,4"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                BoxShadow="0 4 12 0 #40000000"
+                CornerRadius="6"
+                IsVisible="False">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="2">
+                <TextBox x:Name="SearchQuery"
+                         VerticalAlignment="Center"
+                         AutomationProperties.Name="Find in terminal output"
+                         MaxLength="256"
+                         PlaceholderText="Find in terminal" />
+                <!--  Fixed width with tabular digits: "3 of 12" does not move the buttons  -->
+                <TextBlock x:Name="SearchStatus"
+                           Grid.Column="1"
+                           MinWidth="74"
+                           Margin="6,0"
+                           VerticalAlignment="Center"
+                           FontFeatures="+tnum"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           TextAlignment="Right" />
+                <ToggleButton x:Name="SearchMatchCase"
+                              Grid.Column="2"
+                              AutomationProperties.Name="Match case"
+                              Classes="tool"
+                              Content="Aa"
+                              FontWeight="SemiBold"
+                              ToolTip.Tip="Match case" />
+                <Border Grid.Column="3" Classes="toolSeparator" />
+                <Button x:Name="SearchPrevious"
+                        Grid.Column="4"
+                        AutomationProperties.Name="Previous match"
+                        Classes="tool"
+                        Click="OnSearchPrevious"
+                        IsEnabled="False"
+                        ToolTip.Tip="Previous match (Shift+Enter)">
+                    <PathIcon Data="{StaticResource chevron_up_regular}" />
+                </Button>
+                <Button x:Name="SearchNext"
+                        Grid.Column="5"
+                        AutomationProperties.Name="Next match"
+                        Classes="tool"
+                        Click="OnSearchNext"
+                        IsEnabled="False"
+                        ToolTip.Tip="Next match (Enter)">
+                    <PathIcon Data="{StaticResource chevron_down_regular}" />
+                </Button>
+                <Button Grid.Column="6"
+                        AutomationProperties.Name="Close terminal search"
+                        Classes="tool"
+                        Click="OnSearchClose"
+                        ToolTip.Tip="Close (Esc)">
+                    <PathIcon Data="{StaticResource dismiss_regular}" />
+                </Button>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

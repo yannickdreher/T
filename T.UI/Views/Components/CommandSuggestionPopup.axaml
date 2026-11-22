@@ -1,0 +1,94 @@
+﻿<UserControl x:Class="T.UI.Views.Components.CommandSuggestionPopup"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:T.UI.ViewModels"
+             d:DesignWidth="360"
+             Focusable="False"
+             IsTabStop="False"
+             mc:Ignorable="d">
+
+    <UserControl.Styles>
+        <Style Selector="Border.item">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+        </Style>
+        <Style Selector="Border.item.selected">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        </Style>
+        <Style Selector="Border.item.selected &gt; Grid &gt; Border.marker">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+        <Style Selector="TextBlock.secondary">
+            <Setter Property="FontFamily" Value="{DynamicResource ContentControlThemeFontFamily}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border MinWidth="260"
+            MaxWidth="640"
+            Padding="4"
+            Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
+            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            BoxShadow="0 6 16 0 #50000000"
+            CornerRadius="6">
+        <DockPanel>
+            <!--  Key hints  -->
+            <TextBlock Margin="8,4,8,2"
+                       Classes="secondary"
+                       DockPanel.Dock="Bottom"
+                       Text="↑↓ select   Tab insert   → accept grey text   Esc close" />
+
+            <ItemsControl x:Name="List">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CommandSuggestionItem">
+                        <Border Padding="0,3,8,3"
+                                Classes="item"
+                                Classes.selected="{Binding IsSelected}"
+                                CornerRadius="4">
+                            <Grid ColumnDefinitions="3,Auto,*,Auto" ColumnSpacing="8">
+                                <!--  Selection marker  -->
+                                <Border Grid.Column="0"
+                                        Height="14"
+                                        Classes="marker"
+                                        CornerRadius="1.5" />
+
+                                <Panel Grid.Column="1" VerticalAlignment="Center">
+                                    <PathIcon Width="12"
+                                              Height="12"
+                                              Data="{StaticResource arrow_clockwise_regular}"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              IsVisible="{Binding IsHistory}" />
+                                    <PathIcon Width="12"
+                                              Height="12"
+                                              Data="{StaticResource window_console_regular}"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              IsVisible="{Binding IsCommand}" />
+                                </Panel>
+
+                                <TextBlock Grid.Column="2"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis">
+                                    <Run FontWeight="SemiBold"
+                                         Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                         Text="{Binding Typed}" /><Run Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Rest}" />
+                                </TextBlock>
+
+                                <TextBlock Grid.Column="3"
+                                           Classes="secondary"
+                                           Text="{Binding KindLabel}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </DockPanel>
+    </Border>
+</UserControl>
