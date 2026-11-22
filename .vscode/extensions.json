@@ -1,0 +1,7 @@
+{
+  // Suggested when the folder is opened for the first time.
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "avaloniateam.vscode-avalonia"
+  ]
+}
